@@ -11,7 +11,6 @@ See the live views in [selecto_test](https://github.com/selecto-elixir/selecto_t
 - finish various TODOs in the code
 - Forms - line forms & column forms
 - cleanup liveviews / refactor
-- make it look nice
 - cleanup the event handlers
 - error handing on view form
 - results as XML, JSON, TXT, CSV, PDF, Excel.
@@ -24,7 +23,6 @@ See the live views in [selecto_test](https://github.com/selecto-elixir/selecto_t
 ## Plans for later
 
 - better pagination in detail view, paginate by value, select All
-- ability to save view configuration
 - generate a token that can be used to generate a specific view, optionally allowing the token holder to access the forms
 - Use a column in the results as email address and send that email address all the rows they are in
 - Caching
