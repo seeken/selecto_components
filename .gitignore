@@ -26,3 +26,4 @@ selecto_components-*.tar
 /tmp/
 
 /.vscode/
+.DS_Store
