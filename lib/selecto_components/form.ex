@@ -259,6 +259,9 @@ defmodule SelectoComponents.Form do
               <.sc_button type="button" phx-click="export_data" phx-value-format="json">
                 Download JSON
               </.sc_button>
+              <.sc_button type="button" phx-click="export_data" phx-value-format="html">
+                Download HTML
+              </.sc_button>
             </div>
 
             <p class="text-xs text-gray-500 dark:text-gray-400">

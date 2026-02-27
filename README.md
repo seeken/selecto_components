@@ -12,7 +12,7 @@ Phoenix LiveView components for building interactive data query interfaces with 
 SelectoComponents provides a suite of Phoenix LiveView components that enable users to build complex queries, visualize data, and interact with Ecto-based schemas through a visual interface. The library includes:
 
 - **Query Builder**: Drag-and-drop interface for building complex filter queries
-- **Data Views**: Built-in visualization options (Detail, Aggregate, Graph) and extension views (for example Map via `selecto_postgis`)
+- **Data Views**: Built-in visualization options (Detail, Aggregate, Graph, Document) and extension views (for example Map via `selecto_postgis`)
 - **Colocated JavaScript**: Phoenix LiveView 1.1+ colocated hooks for drag-and-drop and charts
 - **Tailwind CSS**: Pre-styled components using Tailwind CSS
 
@@ -254,6 +254,7 @@ If you want the debug panel always enabled in development, pass debug params to
 - `SelectoComponents.Views.Detail` - Table view with sortable columns and pagination
 - `SelectoComponents.Views.Aggregate` - Aggregated data view with grouping capabilities
 - `SelectoComponents.Views.Graph` - Chart visualization using Chart.js
+- `SelectoComponents.Views.Document` - Template-based one-row-per-document rendering with nested subtables
 - `SelectoComponents.Views.Map` - Extension-driven map visualization (provided through `selecto_postgis` extension registration)
 
 ### Custom View Systems

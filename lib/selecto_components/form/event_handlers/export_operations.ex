@@ -19,13 +19,17 @@ defmodule SelectoComponents.Form.EventHandlers.ExportOperations do
       Supported formats:
       - `csv`
       - `json`
+      - `html`
       """
       def handle_event("export_data", %{"format" => format}, socket) do
         with_error_handling(socket, "export_data", fn ->
           query_results = socket.assigns[:query_results]
           view_mode = socket.assigns[:applied_view] || socket.assigns.view_config.view_mode
+          template =
+            get_in(socket.assigns, [:view_meta, :template]) ||
+              get_in(socket.assigns, [:view_config, :views, :document, :template])
 
-          case Exporter.build(format, query_results, view_mode: view_mode) do
+          case Exporter.build(format, query_results, view_mode: view_mode, template: template) do
             {:ok, export} ->
               if byte_size(export.content) > @max_export_payload_bytes do
                 {:noreply,

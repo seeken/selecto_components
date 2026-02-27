@@ -1,6 +1,8 @@
 defmodule SelectoComponents.Exporter do
   @moduledoc false
 
+  alias SelectoComponents.Views.Document.Template
+
   @type export_result :: %{
           filename: String.t(),
           mime_type: String.t(),
@@ -17,6 +19,7 @@ defmodule SelectoComponents.Exporter do
       case format do
         "json" -> build_json(normalized, opts)
         "csv" -> build_csv(normalized, opts)
+        "html" -> build_html(normalized, opts)
         _ -> {:error, :unsupported_format}
       end
     end
@@ -72,6 +75,58 @@ defmodule SelectoComponents.Exporter do
        filename: filename,
        mime_type: "text/csv;charset=utf-8",
        content: content
+     }}
+  end
+
+  defp build_html(normalized, opts) do
+    exported_at = exported_at(opts)
+    view_mode = normalize_view_mode(Keyword.get(opts, :view_mode, "results"))
+    filename = "selecto_#{view_mode}_#{filename_timestamp(exported_at)}.html"
+
+    template =
+      opts
+      |> Keyword.get(:template, %{"blocks" => []})
+      |> Template.normalize()
+
+    blocks = Template.blocks(template)
+
+    body =
+      case view_mode do
+        "document" -> render_document_export(normalized.rows, blocks)
+        _ -> render_generic_html_table(normalized)
+      end
+
+    html = """
+    <!doctype html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Selecto Export</title>
+        <style>
+          body { font-family: Helvetica, Arial, sans-serif; margin: 24px; color: #1f2937; }
+          article { border: 1px solid #d1d5db; border-radius: 10px; padding: 18px; margin-bottom: 18px; page-break-after: always; }
+          h1, h2, h3 { margin: 0 0 10px 0; }
+          p { margin: 0 0 8px 0; line-height: 1.5; }
+          table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+          th, td { border: 1px solid #e5e7eb; padding: 6px 8px; text-align: left; font-size: 13px; }
+          th { background: #f9fafb; text-transform: uppercase; letter-spacing: 0.03em; font-size: 11px; }
+          dl { margin: 0; }
+          dt { font-size: 11px; text-transform: uppercase; color: #6b7280; }
+          dd { margin: 2px 0 10px 0; }
+        </style>
+      </head>
+      <body>
+        #{body}
+      </body>
+    </html>
+    """
+
+    {:ok,
+     %{
+       filename: filename,
+       mime_type: "text/html;charset=utf-8",
+       content: html
      }}
   end
 
@@ -231,6 +286,139 @@ defmodule SelectoComponents.Exporter do
   defp normalize_view_mode(view_mode) when is_atom(view_mode), do: Atom.to_string(view_mode)
   defp normalize_view_mode(view_mode) when is_binary(view_mode), do: view_mode
   defp normalize_view_mode(_view_mode), do: "results"
+
+  defp render_document_export(rows, blocks) do
+    rows
+    |> Enum.with_index(1)
+    |> Enum.map(fn {row, index} ->
+      """
+      <article>
+        <h3>Document #{index}</h3>
+        #{render_document_blocks(row, blocks)}
+      </article>
+      """
+    end)
+    |> Enum.join("\n")
+  end
+
+  defp render_document_blocks(row, blocks) do
+    Enum.map_join(blocks, "\n", fn block ->
+      case Template.block_type(block) do
+        "title" ->
+          text = Template.interpolate(Template.block_text(block), row)
+          "<h1>#{escape_html(text)}</h1>"
+
+        "text" ->
+          text = Template.interpolate(Template.block_text(block), row)
+          "<p>#{escape_html(text)}</p>"
+
+        "fields" ->
+          fields = Template.block_fields(block)
+          title = Template.block_title(block, "Details")
+
+          rows_html =
+            Enum.map_join(fields, "", fn field_name ->
+              value = row |> Template.row_value(field_name) |> Template.printable_value() |> escape_html()
+
+              """
+              <dt>#{escape_html(field_name)}</dt>
+              <dd>#{value}</dd>
+              """
+            end)
+
+          """
+          <section>
+            <h2>#{escape_html(title)}</h2>
+            <dl>#{rows_html}</dl>
+          </section>
+          """
+
+        "table" ->
+          table_name = Template.block_table(block)
+          title = Template.block_title(block, table_name)
+          table_rows = Template.subtable_rows(row, table_name, %{})
+
+          if table_rows == [] do
+            """
+            <section>
+              <h2>#{escape_html(title)}</h2>
+              <p>No related data</p>
+            </section>
+            """
+          else
+            headers =
+              table_rows
+              |> List.first()
+              |> Map.keys()
+
+            head_html =
+              headers
+              |> Enum.map_join("", fn key -> "<th>#{escape_html(to_string(key))}</th>" end)
+
+            body_html =
+              Enum.map_join(table_rows, "", fn item ->
+                cells =
+                  Enum.map_join(headers, "", fn key ->
+                    value = item |> Map.get(key) |> Template.printable_value() |> escape_html()
+                    "<td>#{value}</td>"
+                  end)
+
+                "<tr>#{cells}</tr>"
+              end)
+
+            """
+            <section>
+              <h2>#{escape_html(title)}</h2>
+              <table>
+                <thead><tr>#{head_html}</tr></thead>
+                <tbody>#{body_html}</tbody>
+              </table>
+            </section>
+            """
+          end
+
+        _ ->
+          ""
+      end
+    end)
+  end
+
+  defp render_generic_html_table(normalized) do
+    head_html =
+      Enum.map_join(normalized.headers, "", fn header ->
+        "<th>#{escape_html(header)}</th>"
+      end)
+
+    body_html =
+      Enum.map_join(normalized.rows, "", fn row ->
+        cells =
+          Enum.map_join(normalized.headers, "", fn header ->
+            value = row |> Map.get(header) |> value_to_string() |> escape_html()
+            "<td>#{value}</td>"
+          end)
+
+        "<tr>#{cells}</tr>"
+      end)
+
+    """
+    <table>
+      <thead><tr>#{head_html}</tr></thead>
+      <tbody>#{body_html}</tbody>
+    </table>
+    """
+  end
+
+  defp escape_html(nil), do: ""
+
+  defp escape_html(value) do
+    value
+    |> to_string()
+    |> String.replace("&", "&amp;")
+    |> String.replace("<", "&lt;")
+    |> String.replace(">", "&gt;")
+    |> String.replace("\"", "&quot;")
+    |> String.replace("'", "&#39;")
+  end
 
   defp exported_at(opts) do
     case Keyword.get(opts, :exported_at) do

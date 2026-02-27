@@ -68,4 +68,39 @@ defmodule SelectoComponents.ExporterTest do
     query_results = {[], [], []}
     assert {:error, :unsupported_format} = Exporter.build("xml", query_results)
   end
+
+  test "builds HTML export for document view" do
+    query_results =
+      {
+        [
+          %{
+            "name" => "Alice <Admin>",
+            "posts" => [%{"title" => "Hello"}, %{"title" => "World"}]
+          }
+        ],
+        ["name", "posts"],
+        ["name", "posts"]
+      }
+
+    template = %{
+      "blocks" => [
+        %{"type" => "title", "text" => "Customer {{name}}"},
+        %{"type" => "table", "title" => "Posts", "table" => "posts"}
+      ]
+    }
+
+    assert {:ok, export} =
+             Exporter.build("html", query_results,
+               view_mode: "document",
+               template: template,
+               exported_at: @exported_at
+             )
+
+    assert export.filename == "selecto_document_20260225_120000.html"
+    assert export.mime_type == "text/html;charset=utf-8"
+    assert export.content =~ "<article>"
+    assert export.content =~ "Customer Alice &lt;Admin&gt;"
+    assert export.content =~ "Hello"
+    assert export.content =~ "World"
+  end
 end
