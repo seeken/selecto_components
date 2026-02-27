@@ -14,6 +14,7 @@ defmodule SelectoComponents.Form.ParamsState do
   alias SelectoComponents.Performance.MetricsCollector
   alias SelectoComponents.Views.Aggregate.Options, as: AggregateOptions
   alias SelectoComponents.Views.Detail.Options, as: DetailOptions
+  alias SelectoComponents.Views.Document.Options, as: DocumentOptions
   alias SelectoComponents.Views.Detail.QueryPagination
   alias SelectoComponents.SubselectBuilder
   alias SelectoComponents.EnhancedTable.Sorting
@@ -628,7 +629,7 @@ defmodule SelectoComponents.Form.ParamsState do
   end
 
   defp execute_query_with_detail_pagination(selecto, params, view_meta, socket) do
-    if DetailOptions.detail_view_mode?(params) do
+    if DetailOptions.detail_view_mode?(params) or DocumentOptions.document_view_mode?(params) do
       QueryPagination.execute(selecto, params, view_meta, socket)
     else
       {execute_query_with_metadata(selecto), view_meta, nil}
@@ -698,6 +699,14 @@ defmodule SelectoComponents.Form.ParamsState do
   end
 
   defp normalize_rows_for_view(rows, columns, "detail")
+       when is_list(rows) and rows != [] and (is_list(hd(rows)) or is_tuple(hd(rows))) do
+    Enum.map(rows, fn row ->
+      row_values = if is_tuple(row), do: Tuple.to_list(row), else: row
+      Enum.zip(columns, row_values) |> Map.new()
+    end)
+  end
+
+  defp normalize_rows_for_view(rows, columns, "document")
        when is_list(rows) and rows != [] and (is_list(hd(rows)) or is_tuple(hd(rows))) do
     Enum.map(rows, fn row ->
       row_values = if is_tuple(row), do: Tuple.to_list(row), else: row
