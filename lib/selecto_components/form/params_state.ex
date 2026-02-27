@@ -42,7 +42,11 @@ defmodule SelectoComponents.Form.ParamsState do
           Enum.reduce(view_data, %{}, fn {list_name, items}, acc ->
             cond do
               is_list(items) ->
-                Map.put(acc, to_string(list_name), view_items_to_params(items))
+                Map.put(
+                  acc,
+                  view_list_param_name(selected_view, list_name),
+                  view_items_to_params(items)
+                )
 
               true ->
                 merge_scalar_view_param(acc, selected_view, list_name, items)
@@ -92,6 +96,21 @@ defmodule SelectoComponents.Form.ParamsState do
     Map.put(acc, "max_rows", DetailOptions.normalize_max_rows_param(value))
   end
 
+  defp merge_scalar_view_param(acc, :document, key, value)
+       when key in [:per_page, "per_page"] do
+    Map.put(acc, "document_per_page", normalize_per_page_param(value, "30"))
+  end
+
+  defp merge_scalar_view_param(acc, :document, key, value)
+       when key in [:max_rows, "max_rows"] do
+    Map.put(acc, "document_max_rows", normalize_max_rows_param(value, "1000"))
+  end
+
+  defp merge_scalar_view_param(acc, :document, key, value)
+       when key in [:template, "template"] and is_map(value) do
+    Map.put(acc, "document_template", value)
+  end
+
   defp merge_scalar_view_param(acc, _selected_view, key, value)
        when key in [:per_page, "per_page"] do
     Map.put(acc, "per_page", normalize_per_page_param(value, "30"))
@@ -104,6 +123,12 @@ defmodule SelectoComponents.Form.ParamsState do
 
   defp merge_scalar_view_param(acc, _selected_view, _key, _value), do: acc
 
+  defp view_list_param_name(:document, :selected), do: "document_selected"
+  defp view_list_param_name(:document, "selected"), do: "document_selected"
+  defp view_list_param_name(:document, :subtable_fields), do: "document_subtable_fields"
+  defp view_list_param_name(:document, "subtable_fields"), do: "document_subtable_fields"
+  defp view_list_param_name(_selected_view, list_name), do: to_string(list_name)
+
   defp normalize_per_page_param(nil, default), do: default
 
   defp normalize_per_page_param(value, default) when is_binary(value) do
@@ -115,6 +140,29 @@ defmodule SelectoComponents.Form.ParamsState do
   defp normalize_per_page_param(value, _default) when is_atom(value), do: Atom.to_string(value)
 
   defp normalize_per_page_param(_value, default), do: default
+
+  defp normalize_max_rows_param(nil, default), do: default
+
+  defp normalize_max_rows_param(value, default) when is_binary(value) do
+    trimmed = String.trim(value)
+
+    cond do
+      trimmed == "" -> default
+      String.downcase(trimmed) == "all" -> "all"
+      true ->
+        case Integer.parse(trimmed) do
+          {parsed, ""} when parsed > 0 -> Integer.to_string(parsed)
+          _ -> default
+        end
+    end
+  end
+
+  defp normalize_max_rows_param(value, _default) when is_integer(value) and value > 0,
+    do: Integer.to_string(value)
+
+  defp normalize_max_rows_param(value, _default) when is_atom(value), do: Atom.to_string(value)
+
+  defp normalize_max_rows_param(_value, default), do: default
 
   @doc """
   Convert filters back to params format.
@@ -715,126 +763,141 @@ defmodule SelectoComponents.Form.ParamsState do
       "view_mode" => view_type
     }
 
-    # Convert selected items
-    params =
-      if selected = get_map_value(view_config, :selected) do
-        selected_params =
-          selected
-          |> Enum.with_index()
-          |> Enum.reduce(%{}, fn
-            {[uuid, field, config], index}, acc ->
-              Map.put(
-                acc,
-                uuid,
-                Map.merge(config, %{
-                  "field" => field,
-                  "index" => to_string(index)
-                })
-              )
-
-            {{uuid, field, config}, index}, acc ->
-              Map.put(
-                acc,
-                uuid,
-                Map.merge(config, %{
-                  "field" => field,
-                  "index" => to_string(index)
-                })
-              )
-          end)
-
-        Map.put(params, "selected", selected_params)
-      else
-        params
-      end
-
-    # Convert order_by items - always set this to ensure replacement
-    order_by = get_map_value(view_config, :order_by, [])
-
-    order_by_params =
-      order_by
-      |> Enum.with_index()
-      |> Enum.reduce(%{}, fn
-        {[uuid, field, config], index}, acc ->
-          # Ensure all keys and values in config are strings
-          string_config =
-            case config do
-              nil ->
-                %{}
-
-              map when is_map(map) ->
-                Map.new(map, fn {k, v} -> {to_string(k), to_string(v)} end)
-
-              _ ->
-                %{}
-            end
-
-          Map.put(
-            acc,
-            uuid,
-            Map.merge(string_config, %{
-              "field" => field,
-              "index" => to_string(index)
-            })
-          )
-
-        {{uuid, field, config}, index}, acc ->
-          # Ensure all keys and values in config are strings
-          string_config =
-            case config do
-              nil ->
-                %{}
-
-              map when is_map(map) ->
-                Map.new(map, fn {k, v} -> {to_string(k), to_string(v)} end)
-
-              _ ->
-                %{}
-            end
-
-          Map.put(
-            acc,
-            uuid,
-            Map.merge(string_config, %{
-              "field" => field,
-              "index" => to_string(index)
-            })
-          )
-      end)
-
-    params = Map.put(params, "order_by", order_by_params)
-
-    # Add other view-specific params
     view_type_str = to_string(view_type)
 
-    params =
-      if view_type_str == "aggregate" do
-        Map.put(
-          params,
-          "aggregate_per_page",
-          AggregateOptions.normalize_per_page_param(get_map_value(view_config, :per_page, "100"))
-        )
-      else
-        Map.put(params, "per_page", to_string(get_map_value(view_config, :per_page, "30")))
-      end
+    if view_type_str == "document" do
+      convert_document_saved_config_to_full_params(view_config, params)
+    else
+      # Convert selected items
+      params =
+        if selected = get_map_value(view_config, :selected) do
+          Map.put(params, "selected", saved_items_to_params(selected))
+        else
+          params
+        end
 
-    params =
-      if view_type_str == "detail" do
-        Map.put(
-          params,
-          "max_rows",
-          DetailOptions.normalize_max_rows_param(get_map_value(view_config, :max_rows, "1000"))
-        )
-      else
-        params
-      end
+      # Convert order_by items - always set this to ensure replacement
+      order_by = get_map_value(view_config, :order_by, [])
+      params = Map.put(params, "order_by", saved_order_items_to_params(order_by))
 
-    Map.put(
-      params,
-      "prevent_denormalization",
-      to_string(get_map_value(view_config, :prevent_denormalization, true))
-    )
+      params =
+        if view_type_str == "aggregate" do
+          Map.put(
+            params,
+            "aggregate_per_page",
+            AggregateOptions.normalize_per_page_param(get_map_value(view_config, :per_page, "100"))
+          )
+        else
+          Map.put(params, "per_page", to_string(get_map_value(view_config, :per_page, "30")))
+        end
+
+      params =
+        if view_type_str == "detail" do
+          Map.put(
+            params,
+            "max_rows",
+            DetailOptions.normalize_max_rows_param(get_map_value(view_config, :max_rows, "1000"))
+          )
+        else
+          params
+        end
+
+      Map.put(
+        params,
+        "prevent_denormalization",
+        to_string(get_map_value(view_config, :prevent_denormalization, true))
+      )
+    end
   end
+
+  defp convert_document_saved_config_to_full_params(view_config, params) do
+    selected = get_map_value(view_config, :selected, [])
+    subtable_fields = get_map_value(view_config, :subtable_fields, [])
+
+    params
+    |> Map.put("document_selected", saved_items_to_params(selected))
+    |> Map.put("document_subtable_fields", saved_items_to_params(subtable_fields))
+    |> Map.put("document_template", document_template_from_saved(view_config))
+    |> Map.put("document_per_page", normalize_per_page_param(get_map_value(view_config, :per_page, "30"), "30"))
+    |> Map.put("document_max_rows", normalize_max_rows_param(get_map_value(view_config, :max_rows, "1000"), "1000"))
+  end
+
+  defp document_template_from_saved(view_config) do
+    case get_map_value(view_config, :template, %{"blocks" => []}) do
+      template when is_map(template) -> template
+      _ -> %{"blocks" => []}
+    end
+  end
+
+  defp saved_items_to_params(items) when is_list(items) do
+    items
+    |> Enum.with_index()
+    |> Enum.reduce(%{}, fn
+      {[uuid, field, config], index}, acc ->
+        Map.put(
+          acc,
+          uuid,
+          Map.merge(to_string_map(config), %{
+            "field" => field,
+            "index" => to_string(index)
+          })
+        )
+
+      {{uuid, field, config}, index}, acc ->
+        Map.put(
+          acc,
+          uuid,
+          Map.merge(to_string_map(config), %{
+            "field" => field,
+            "index" => to_string(index)
+          })
+        )
+
+      {_item, _index}, acc ->
+        acc
+    end)
+  end
+
+  defp saved_items_to_params(_items), do: %{}
+
+  defp saved_order_items_to_params(items) when is_list(items) do
+    items
+    |> Enum.with_index()
+    |> Enum.reduce(%{}, fn
+      {[uuid, field, config], index}, acc ->
+        Map.put(
+          acc,
+          uuid,
+          Map.merge(to_string_map(config), %{
+            "field" => field,
+            "index" => to_string(index)
+          })
+        )
+
+      {{uuid, field, config}, index}, acc ->
+        Map.put(
+          acc,
+          uuid,
+          Map.merge(to_string_map(config), %{
+            "field" => field,
+            "index" => to_string(index)
+          })
+        )
+
+      {_item, _index}, acc ->
+        acc
+    end)
+  end
+
+  defp saved_order_items_to_params(_items), do: %{}
+
+  defp to_string_map(nil), do: %{}
+
+  defp to_string_map(map) when is_map(map) do
+    Map.new(map, fn {k, v} -> {to_string(k), to_string(v)} end)
+  end
+
+  defp to_string_map(_), do: %{}
 
   @doc """
   Check if view parameters have changed significantly enough to require a view reset.

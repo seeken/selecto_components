@@ -478,6 +478,21 @@ defmodule SelectoComponents.Form do
         end)
         |> Enum.filter(&(&1 != nil))
 
+      "document" ->
+        root_fields =
+          Map.get(params, "document_selected", %{})
+          |> Map.values()
+          |> Enum.map(fn item -> Map.get(item, "field") end)
+          |> Enum.filter(&(&1 != nil))
+
+        subtable_fields =
+          Map.get(params, "document_subtable_fields", %{})
+          |> Map.values()
+          |> Enum.map(fn item -> Map.get(item, "field") end)
+          |> Enum.filter(&(&1 != nil))
+
+        root_fields ++ subtable_fields
+
       _ ->
         []
     end

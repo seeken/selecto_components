@@ -418,6 +418,12 @@ defmodule SelectoComponents.ViewConfigManager do
           |> Map.put(:order_by, order_by)
           |> Map.put(:per_page, Map.get(current_view_config, :per_page, "30"))
 
+        "document" ->
+          current_view_config
+          |> Map.put(:template, Map.get(current_view_config, :template, %{"blocks" => []}))
+          |> Map.put(:per_page, Map.get(current_view_config, :per_page, "30"))
+          |> Map.put(:max_rows, Map.get(current_view_config, :max_rows, "1000"))
+
         _ ->
           current_view_config
       end
