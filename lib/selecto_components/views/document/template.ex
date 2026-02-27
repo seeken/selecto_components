@@ -3,8 +3,8 @@ defmodule SelectoComponents.Views.Document.Template do
 
   alias SelectoComponents.Components.NestedTable
 
-  def normalize(%{"blocks" => blocks}) when is_list(blocks), do: %{"blocks" => blocks}
-  def normalize(%{blocks: blocks}) when is_list(blocks), do: %{blocks: blocks}
+  def normalize(%{"blocks" => blocks}), do: %{"blocks" => normalize_blocks(blocks)}
+  def normalize(%{blocks: blocks}), do: %{"blocks" => normalize_blocks(blocks)}
   def normalize(_), do: %{"blocks" => []}
 
   def blocks(template) do
@@ -32,6 +32,12 @@ defmodule SelectoComponents.Views.Document.Template do
   def block_fields(block) do
     case map_value(block, "fields") do
       fields when is_list(fields) -> Enum.filter(fields, &is_binary/1)
+      fields when is_binary(fields) ->
+        fields
+        |> String.split(",")
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+
       _ -> []
     end
   end
@@ -99,4 +105,32 @@ defmodule SelectoComponents.Views.Document.Template do
 
   defp default_empty(nil), do: ""
   defp default_empty(value), do: value
+
+  defp normalize_blocks(blocks) when is_list(blocks) do
+    blocks
+    |> Enum.map(&normalize_block/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp normalize_blocks(blocks) when is_map(blocks) do
+    blocks
+    |> Enum.sort_by(fn {k, _v} ->
+      case Integer.parse(to_string(k)) do
+        {index, ""} -> index
+        _ -> 0
+      end
+    end)
+    |> Enum.map(fn {_k, block} -> normalize_block(block) end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp normalize_blocks(_blocks), do: []
+
+  defp normalize_block(block) when is_map(block) do
+    block
+    |> Enum.map(fn {k, v} -> {to_string(k), v} end)
+    |> Map.new()
+  end
+
+  defp normalize_block(_block), do: nil
 end

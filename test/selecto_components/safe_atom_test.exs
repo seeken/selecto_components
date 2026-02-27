@@ -137,6 +137,7 @@ defmodule SelectoComponents.SafeAtomTest do
       assert SafeAtom.to_list_name("x_axis") == :x_axis
       assert SafeAtom.to_list_name("y_axis") == :y_axis
       assert SafeAtom.to_list_name("series") == :series
+      assert SafeAtom.to_list_name("subtable_fields") == :subtable_fields
     end
 
     test "returns default for invalid strings" do

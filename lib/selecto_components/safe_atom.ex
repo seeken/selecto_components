@@ -45,7 +45,7 @@ defmodule SelectoComponents.SafeAtom do
   @valid_aggregate_functions ~w(count sum avg min max array_agg string_agg median mode stddev variance first last)a
   @valid_list_names ~w(
     group_by aggregate selected order_by columns fields filters joins having
-    x_axis y_axis series
+    x_axis y_axis series subtable_fields
   )a
 
   # Theme property keys for atomize_keys

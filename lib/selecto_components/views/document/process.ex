@@ -3,6 +3,7 @@ defmodule SelectoComponents.Views.Document.Process do
 
   alias SelectoComponents.SubselectBuilder
   alias SelectoComponents.Views.Document.Options
+  alias SelectoComponents.Views.Document.Template
 
   def param_to_state(params, _view) do
     %{
@@ -92,9 +93,7 @@ defmodule SelectoComponents.Views.Document.Process do
      }}
   end
 
-  defp normalize_template(%{"blocks" => blocks}) when is_list(blocks), do: %{"blocks" => blocks}
-  defp normalize_template(%{blocks: blocks}) when is_list(blocks), do: %{blocks: blocks}
-  defp normalize_template(_), do: %{"blocks" => []}
+  defp normalize_template(template), do: Template.normalize(template)
 
   defp ordered_items(items) when is_map(items) do
     items
