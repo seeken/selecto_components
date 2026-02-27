@@ -500,6 +500,7 @@ defmodule SelectoComponents.ViewConfigManager do
   defp get_view_type_label("aggregate"), do: "Aggregate"
   defp get_view_type_label("graph"), do: "Graph"
   defp get_view_type_label("map"), do: "Map"
+  defp get_view_type_label("document"), do: "Document"
   defp get_view_type_label(_), do: "Detail"
 
   defp format_time_ago(%DateTime{} = datetime) do
