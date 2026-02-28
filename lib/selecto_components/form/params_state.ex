@@ -254,6 +254,8 @@ defmodule SelectoComponents.Form.ParamsState do
           Map.put(acc, Map.get(f, "section"), Map.get(acc, Map.get(f, "section"), []) ++ [f])
         end)
 
+      subquery_filter_groups = build_subquery_filter_groups(selecto, params)
+
       filtered = filter_recurse(selecto, filters_by_section, "filters")
 
       selected_view = SafeAtom.to_view_mode(get_map_value(params, :view_mode))
@@ -310,7 +312,12 @@ defmodule SelectoComponents.Form.ParamsState do
             result =
               Enum.reduce(denorm_groups, selecto, fn {relationship_path, columns}, acc ->
                 # Add subselect for #{relationship_path} with columns: #{inspect(columns)}
-                SubselectBuilder.add_subselect_for_group(acc, relationship_path, columns)
+                propagated_filters =
+                  subquery_filters_for_group(subquery_filter_groups, relationship_path)
+
+                SubselectBuilder.add_subselect_for_group(acc, relationship_path, columns,
+                  filters: propagated_filters
+                )
               end)
 
             result
@@ -931,4 +938,102 @@ defmodule SelectoComponents.Form.ParamsState do
   end
 
   defp get_map_value(_map, _key, default), do: default
+
+  defp build_subquery_filter_groups(selecto, params) do
+    params
+    |> Map.get("filters", %{})
+    |> Map.values()
+    |> Enum.filter(&subquery_filter_candidate?/1)
+    |> Enum.reduce(%{}, fn filter_map, acc ->
+      relationship_path = derive_filter_relationship_path(selecto, filter_map)
+
+      parsed_filters =
+        filter_recurse(selecto, %{"filters" => [filter_map]}, "filters")
+        |> Enum.reject(&is_nil/1)
+
+      cond do
+        is_nil(relationship_path) or relationship_path == "" ->
+          acc
+
+        parsed_filters == [] ->
+          acc
+
+        true ->
+          Map.update(acc, relationship_path, parsed_filters, fn existing ->
+            existing ++ parsed_filters
+          end)
+      end
+    end)
+  end
+
+  defp subquery_filter_candidate?(filter_map) when is_map(filter_map) do
+    Map.has_key?(filter_map, "filter") and truthy?(Map.get(filter_map, "apply_to_subquery"))
+  end
+
+  defp subquery_filter_candidate?(_), do: false
+
+  defp truthy?(values) when is_list(values), do: Enum.any?(values, &truthy?/1)
+  defp truthy?(value) when value in [true, "true", "on", "1", 1, "Y", "y"], do: true
+  defp truthy?(_value), do: false
+
+  defp derive_filter_relationship_path(selecto, filter_map) do
+    filter_id = Map.get(filter_map, "filter")
+
+    relationship_from_id(filter_id) ||
+      case Selecto.field(selecto, filter_id) do
+        %{requires_join: join_ref} when join_ref not in [nil, :selecto_root, "selecto_root"] ->
+          to_string(join_ref)
+
+        _ ->
+          nil
+      end
+  end
+
+  defp relationship_from_id(filter_id) when is_binary(filter_id) do
+    cond do
+      String.contains?(filter_id, "[") ->
+        case Regex.run(~r/^([^[]+)\[/, filter_id, capture: :all_but_first) do
+          [relationship_path] -> relationship_path
+          _ -> nil
+        end
+
+      String.contains?(filter_id, ".") ->
+        parts = String.split(filter_id, ".")
+        if length(parts) > 1, do: Enum.drop(parts, -1) |> Enum.join("."), else: nil
+
+      true ->
+        nil
+    end
+  end
+
+  defp relationship_from_id(_filter_id), do: nil
+
+  defp subquery_filters_for_group(subquery_filter_groups, relationship_path)
+       when is_map(subquery_filter_groups) do
+    normalized_path = to_string(relationship_path)
+
+    case Map.get(subquery_filter_groups, normalized_path) do
+      nil ->
+        # Fallback for mismatched path prefixes (for example "source.posts" vs "posts").
+        target_segment = join_segment(normalized_path)
+
+        subquery_filter_groups
+        |> Enum.flat_map(fn {path, filters} ->
+          if join_segment(path) == target_segment, do: filters, else: []
+        end)
+
+      filters ->
+        filters
+    end
+  end
+
+  defp subquery_filters_for_group(_subquery_filter_groups, _relationship_path), do: []
+
+  defp join_segment(path) when is_binary(path) do
+    path
+    |> String.split(".")
+    |> List.last()
+  end
+
+  defp join_segment(path), do: to_string(path)
 end

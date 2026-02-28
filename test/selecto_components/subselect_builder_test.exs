@@ -72,4 +72,17 @@ defmodule SelectoComponents.SubselectBuilderTest do
     assert config.fields == ["title", "user_id"]
     assert config.alias == "source.posts"
   end
+
+  test "passes propagated filters into subselect config" do
+    selecto = test_selecto()
+
+    updated =
+      SubselectBuilder.add_subselect_for_group(selecto, "posts", ["posts.title"],
+        filters: [{"title", {:like, "%foo%"}}]
+      )
+
+    [config] = Selecto.Subselect.get_subselect_configs(updated)
+
+    assert config.filters == [{"title", {:like, "%foo%"}}]
+  end
 end

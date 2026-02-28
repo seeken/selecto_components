@@ -61,6 +61,12 @@ defmodule SelectoComponents.Form.FilterRendering do
         true -> :string
       end
 
+    supports_subquery_scope =
+      supports_subquery_scope_filter?(assigns.selecto, filter_id, filter_def, column_def)
+
+    apply_to_subquery_checked =
+      checkbox_checked?(Map.get(filter_value, "apply_to_subquery", "false"))
+
     # Check if this is a custom filter with a component
     if filter_def && Map.get(filter_def, :type) == :component && Map.get(filter_def, :component) do
       # Render the custom component
@@ -96,7 +102,9 @@ defmodule SelectoComponents.Form.FilterRendering do
           filter_value: filter_value,
           field_type: field_type,
           column_def: column_def,
-          filter_def: filter_def
+          filter_def: filter_def,
+          supports_subquery_scope: supports_subquery_scope,
+          apply_to_subquery_checked: apply_to_subquery_checked
         })
 
       # Check if this is a join_mode field (lookup/star/tag) - should render as multi-select
@@ -344,6 +352,19 @@ defmodule SelectoComponents.Form.FilterRendering do
         <% end %>
       </div>
 
+      <%= if @supports_subquery_scope do %>
+        <div class="flex items-center gap-2 text-sm text-gray-700">
+          <input type="hidden" name={"filters[#{@uuid}][apply_to_subquery]"} value="false" />
+          <input
+            type="checkbox"
+            class="checkbox checkbox-sm"
+            name={"filters[#{@uuid}][apply_to_subquery]"}
+            value="true"
+            checked={@apply_to_subquery_checked}
+          /> Restrict nested rows to this filter
+        </div>
+      <% end %>
+
       <input type="hidden" name={"filters[#{@uuid}][uuid]"} value={@uuid} />
       <input type="hidden" name={"filters[#{@uuid}][section]"} value={@section} />
       <input type="hidden" name={"filters[#{@uuid}][index]"} value={@index} />
@@ -470,8 +491,7 @@ defmodule SelectoComponents.Form.FilterRendering do
             name={"filters[#{@uuid}][exclude_articles]"}
             value="true"
             checked={Map.get(@filter_value, "exclude_articles", "false") in [true, "true", "on", "1"]}
-          />
-          Ignore leading articles (a, an, the)
+          /> Ignore leading articles (a, an, the)
         </div>
       <% end %>
 
@@ -484,8 +504,20 @@ defmodule SelectoComponents.Form.FilterRendering do
             name={"filters[#{@uuid}][ignore_case]"}
             value="true"
             checked={@ignore_case_checked}
-          />
-          Case insensitive
+          /> Case insensitive
+        </div>
+      <% end %>
+
+      <%= if @supports_subquery_scope do %>
+        <div class="col-span-3 flex items-center gap-2 text-sm text-gray-700">
+          <input type="hidden" name={"filters[#{@uuid}][apply_to_subquery]"} value="false" />
+          <input
+            type="checkbox"
+            class="checkbox checkbox-sm"
+            name={"filters[#{@uuid}][apply_to_subquery]"}
+            value="true"
+            checked={@apply_to_subquery_checked}
+          /> Restrict nested rows to this filter
         </div>
       <% end %>
 
@@ -635,6 +667,19 @@ defmodule SelectoComponents.Form.FilterRendering do
       <div class="text-xs text-gray-500">
         Full-text search supports phrases in quotes, OR for alternatives, and - to exclude terms
       </div>
+
+      <%= if @supports_subquery_scope do %>
+        <div class="flex items-center gap-2 text-sm text-gray-700">
+          <input type="hidden" name={"filters[#{@uuid}][apply_to_subquery]"} value="false" />
+          <input
+            type="checkbox"
+            class="checkbox checkbox-sm"
+            name={"filters[#{@uuid}][apply_to_subquery]"}
+            value="true"
+            checked={@apply_to_subquery_checked}
+          /> Restrict nested rows to this filter
+        </div>
+      <% end %>
 
       <input type="hidden" name={"filters[#{@uuid}][uuid]"} value={@uuid} />
       <input type="hidden" name={"filters[#{@uuid}][section]"} value={@section} />
@@ -956,6 +1001,19 @@ defmodule SelectoComponents.Form.FilterRendering do
           value={Enum.join(@selected_ids, ",")}
         />
       <% end %>
+
+      <%= if @supports_subquery_scope do %>
+        <div class="flex items-center gap-2 text-sm text-gray-700">
+          <input type="hidden" name={"filters[#{@uuid}][apply_to_subquery]"} value="false" />
+          <input
+            type="checkbox"
+            class="checkbox checkbox-sm"
+            name={"filters[#{@uuid}][apply_to_subquery]"}
+            value="true"
+            checked={@apply_to_subquery_checked}
+          /> Restrict nested rows to this filter
+        </div>
+      <% end %>
     </div>
     """
   end
@@ -1005,6 +1063,33 @@ defmodule SelectoComponents.Form.FilterRendering do
   end
 
   defp parse_filter_ids(_), do: []
+
+  defp supports_subquery_scope_filter?(selecto, filter_id, filter_def, column_def) do
+    requires_join =
+      cond do
+        is_map(filter_def) and Map.has_key?(filter_def, :requires_join) ->
+          Map.get(filter_def, :requires_join)
+
+        is_map(column_def) and Map.has_key?(column_def, :requires_join) ->
+          Map.get(column_def, :requires_join)
+
+        true ->
+          case Selecto.field(selecto, filter_id) do
+            %{requires_join: join_ref} -> join_ref
+            _ -> nil
+          end
+      end
+
+    requires_join not in [nil, :selecto_root, "selecto_root"]
+  end
+
+  defp checkbox_checked?(values) when is_list(values), do: Enum.any?(values, &checkbox_checked?/1)
+
+  defp checkbox_checked?(value)
+       when value in [true, "true", "on", "1", 1, "Y", "y"],
+       do: true
+
+  defp checkbox_checked?(_value), do: false
 
   defp find_polymorphic_config(selecto, filter_id, column_def) do
     # Check if column_def already has polymorphic join_mode

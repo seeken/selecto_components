@@ -40,8 +40,10 @@ defmodule SelectoComponents.SubselectBuilder do
     case subselect_config.format do
       :json_agg ->
         format_as_json_array(results)
+
       :array_agg ->
         format_as_array(results)
+
       _ ->
         results
     end
@@ -57,7 +59,7 @@ defmodule SelectoComponents.SubselectBuilder do
     end
   end
 
-  def add_subselect_for_group(selecto, relationship_path, columns) do
+  def add_subselect_for_group(selecto, relationship_path, columns, opts \\ []) do
     # Generate a subselect for a group of related columns
     # All columns for a relationship should be in ONE subselect that returns JSON objects
 
@@ -78,7 +80,8 @@ defmodule SelectoComponents.SubselectBuilder do
         fields: field_names,
         target_schema: target_schema,
         format: :json_agg,
-        alias: normalized_path
+        alias: normalized_path,
+        filters: Keyword.get(opts, :filters, [])
       }
 
       Selecto.subselect(selecto, [config])
@@ -164,9 +167,10 @@ defmodule SelectoComponents.SubselectBuilder do
   def validate_subselects(selecto) do
     subselects = Map.get(selecto, :subselects, [])
 
-    errors = Enum.flat_map(subselects, fn subselect ->
-      validate_single_subselect(subselect)
-    end)
+    errors =
+      Enum.flat_map(subselects, fn subselect ->
+        validate_single_subselect(subselect)
+      end)
 
     case errors do
       [] -> :ok
@@ -178,18 +182,20 @@ defmodule SelectoComponents.SubselectBuilder do
     errors = []
 
     # Check for required fields
-    errors = if Map.has_key?(subselect, :columns) do
-      errors
-    else
-      ["Subselect missing required 'columns' field" | errors]
-    end
+    errors =
+      if Map.has_key?(subselect, :columns) do
+        errors
+      else
+        ["Subselect missing required 'columns' field" | errors]
+      end
 
     # Check for valid alias
-    errors = if Map.has_key?(subselect, :as) && is_binary(subselect.as) do
-      errors
-    else
-      ["Subselect missing or invalid 'as' alias" | errors]
-    end
+    errors =
+      if Map.has_key?(subselect, :as) && is_binary(subselect.as) do
+        errors
+      else
+        ["Subselect missing or invalid 'as' alias" | errors]
+      end
 
     errors
   end
