@@ -11,7 +11,8 @@ defmodule SelectoComponents.Form.TabsTest do
       render_component(&Tabs.nav/1, %{
         active_tab: nil,
         theme: Theme.default_theme(:light),
-        use_saved_views: false
+        use_saved_views: false,
+        use_ai_import: false
       })
 
     assert html =~ ~s(id="main-tab-view")
@@ -21,6 +22,7 @@ defmodule SelectoComponents.Form.TabsTest do
     assert html =~ "Filters"
     assert html =~ "Export"
     refute html =~ "Save View"
+    refute html =~ "AI"
   end
 
   test "renders the save tab when saved views are enabled" do
@@ -28,12 +30,27 @@ defmodule SelectoComponents.Form.TabsTest do
       render_component(&Tabs.nav/1, %{
         active_tab: "save",
         theme: Theme.default_theme(:light),
-        use_saved_views: true
+        use_saved_views: true,
+        use_ai_import: false
       })
 
     assert html =~ ~s(id="main-tab-save")
     assert html =~ ~s(aria-selected)
     assert html =~ ~s(sc-tab-active)
     assert html =~ "Save View"
+  end
+
+  test "renders the ai tab when ai import is enabled" do
+    html =
+      render_component(&Tabs.nav/1, %{
+        active_tab: "ai",
+        theme: Theme.default_theme(:light),
+        use_saved_views: false,
+        use_ai_import: true
+      })
+
+    assert html =~ ~s(id="main-tab-ai")
+    assert html =~ "AI"
+    assert html =~ ~s(sc-tab-active)
   end
 end

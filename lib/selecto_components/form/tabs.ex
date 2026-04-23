@@ -7,6 +7,7 @@ defmodule SelectoComponents.Form.Tabs do
   attr(:active_tab, :string, default: nil)
   attr(:theme, :map, required: true)
   attr(:use_saved_views, :boolean, default: false)
+  attr(:use_ai_import, :boolean, default: false)
 
   def nav(assigns) do
     ~H"""
@@ -26,6 +27,10 @@ defmodule SelectoComponents.Form.Tabs do
 
         <.tab_button :if={@use_saved_views} active={@active_tab == "save"} theme={@theme} tab="save">
           Save View
+        </.tab_button>
+
+        <.tab_button :if={@use_ai_import} active={@active_tab == "ai"} theme={@theme} tab="ai">
+          AI
         </.tab_button>
 
         <.tab_button active={@active_tab == "export"} theme={@theme} tab="export">

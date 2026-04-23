@@ -51,6 +51,18 @@ defmodule SelectoComponents.FormTest do
     assert html =~ "Filters"
   end
 
+  test "renders ai import panel when enabled" do
+    html =
+      render_component(
+        Form,
+        base_assigns(%{show_view_configurator: true, active_tab: "ai", ai_import_enabled: true})
+      )
+
+    assert html =~ "AI Intent Import"
+    assert html =~ "Import AI Intent"
+    assert html =~ ~s(id="main-tab-ai")
+  end
+
   test "renders the submit button in its dirty state when the view config has pending edits" do
     html =
       render_component(

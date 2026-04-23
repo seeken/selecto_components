@@ -59,6 +59,7 @@ defmodule SelectoComponents.Form do
           ),
         theme: Theme.resolve_theme(assigns),
         use_saved_views: Map.get(assigns, :saved_view_module, false),
+        use_ai_import: Map.get(assigns, :ai_import_enabled, false),
         use_exported_views: Map.get(assigns, :exported_view_module, false),
         use_export_delivery: Map.get(assigns, :export_delivery_module, false),
         use_scheduled_exports: Map.get(assigns, :scheduled_export_module, false),
@@ -186,7 +187,7 @@ defmodule SelectoComponents.Form do
           aria-hidden={to_string(!@show_view_configurator)}
           class={if @show_view_configurator, do: "", else: "hidden"}
         >
-          <Tabs.nav active_tab={@active_tab} theme={@theme} use_saved_views={@use_saved_views} />
+          <Tabs.nav active_tab={@active_tab} theme={@theme} use_saved_views={@use_saved_views} use_ai_import={@use_ai_import} />
 
           <ViewPanel.panel
             active_tab={@active_tab}
@@ -220,6 +221,18 @@ defmodule SelectoComponents.Form do
 
           <TabPanel.panel :if={@use_saved_views} active_tab={@active_tab} tab="save" theme={@theme} title="Save View Configuration">
             <SavePanel.panel theme={@theme} />
+          </TabPanel.panel>
+
+          <TabPanel.panel :if={@use_ai_import} active_tab={@active_tab} tab="ai" theme={@theme} title="AI Intent Import">
+            <.live_component
+              module={SelectoComponents.AI.ImportComponent}
+              id={"#{@id}-ai-import"}
+              theme={@theme}
+              selecto={@selecto}
+              views={@views}
+              view_config={@view_config}
+              presentation_context={@presentation_context}
+            />
           </TabPanel.panel>
 
           <TabPanel.panel active_tab={@active_tab} tab="export" theme={@theme} title="Export Options">
