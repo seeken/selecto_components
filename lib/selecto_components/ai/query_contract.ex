@@ -24,7 +24,7 @@ defmodule SelectoComponents.AI.QueryContract do
   @spec generate(term(), list(), keyword()) :: map()
   def generate(selecto, views, opts \\ []) when is_list(views) do
     domain = Selecto.domain(selecto)
-    columns = Selecto.columns(selecto)
+    columns = scoped_columns(Selecto.columns(selecto), opts)
     filters = Selecto.filters(selecto) || %{}
     field_filters = build_field_filter_map(selecto)
     view_modes = Enum.map(views, fn {id, _module, _name, _opts} -> Atom.to_string(id) end)
@@ -35,10 +35,10 @@ defmodule SelectoComponents.AI.QueryContract do
       "generated_at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(),
       "domain" => domain_descriptor(domain, opts),
       "context" => context_descriptor(view_modes, default_view_mode, opts),
-      "fields" => field_descriptors(columns, filters, field_filters),
+      "fields" => field_descriptors(columns, filters, field_filters, opts),
       "params_schema" => params_schema(view_modes),
       "capabilities" => capabilities(view_modes, opts),
-      "examples" => Keyword.get(opts, :examples, []),
+      "examples" => examples(columns, view_modes, opts),
       "errors" => @error_messages
     }
   end
@@ -65,15 +65,15 @@ defmodule SelectoComponents.AI.QueryContract do
     }
   end
 
-  defp field_descriptors(columns, filters, field_filters) do
+  defp field_descriptors(columns, filters, field_filters, opts) do
     columns
     |> Enum.map(fn {field_id, column} ->
-      field_descriptor(field_id, column, filters, field_filters)
+      field_descriptor(field_id, column, filters, field_filters, opts)
     end)
     |> Enum.sort_by(& &1["label"])
   end
 
-  defp field_descriptor(field_id, column, filters, field_filters) do
+  defp field_descriptor(field_id, column, filters, field_filters, opts) do
     field_id = to_string(field_id)
     type = normalized_type(column)
     explicit_filter = Map.get(filters, field_id)
@@ -100,7 +100,7 @@ defmodule SelectoComponents.AI.QueryContract do
       "comparators" => comparators_for(type, explicit_filter),
       "formats" => formats_for(column),
       "aliases_allowed" => true,
-      "visibility" => visibility_for(column)
+      "visibility" => visibility_for(column, opts)
     }
 
     descriptor
@@ -289,11 +289,179 @@ defmodule SelectoComponents.AI.QueryContract do
     end
   end
 
-  defp visibility_for(column) do
+  defp visibility_for(column, opts) do
+    explicit_visibility =
+      case Keyword.get(opts, :field_visibility) do
+        visibility when is_map(visibility) ->
+          Map.get(
+            visibility,
+            Map.get(column, :colid),
+            Map.get(visibility, to_string(Map.get(column, :colid)))
+          )
+
+        visibility_fun when is_function(visibility_fun, 2) ->
+          visibility_fun.(Map.get(column, :colid), column)
+
+        _ ->
+          nil
+      end
+
     cond do
+      explicit_visibility in ["hidden", "advanced", "normal"] -> explicit_visibility
       Map.get(column, :hidden) == true -> "hidden"
       Map.get(column, :advanced) == true -> "advanced"
       true -> "normal"
+    end
+  end
+
+  defp examples(columns, view_modes, opts) do
+    custom_examples = Keyword.get(opts, :examples)
+
+    cond do
+      is_list(custom_examples) and custom_examples != [] ->
+        custom_examples
+
+      true ->
+        build_default_examples(columns, view_modes)
+    end
+  end
+
+  defp build_default_examples(columns, view_modes) do
+    column_list =
+      Enum.map(columns, fn {field_id, column} ->
+        {to_string(field_id), normalized_type(column), column}
+      end)
+
+    detail_field =
+      Enum.find(column_list, fn {_id, _type, column} -> detail_selectable?(column) end)
+
+    group_field = Enum.find(column_list, fn {_id, type, _column} -> groupable_type?(type) end)
+    metric_field = Enum.find(column_list, fn {_id, type, _column} -> aggregatable_type?(type) end)
+
+    time_field =
+      Enum.find(column_list, fn {_id, type, _column} ->
+        type in ["date", "naive_datetime", "utc_datetime"]
+      end)
+
+    []
+    |> maybe_add_example(detail_example(detail_field, view_modes))
+    |> maybe_add_example(aggregate_example(group_field, metric_field, view_modes))
+    |> maybe_add_example(graph_example(time_field, metric_field, view_modes))
+  end
+
+  defp detail_example({field_id, _type, column}, view_modes) do
+    if "detail" in view_modes do
+      %{
+        "id" => "detail_single_field",
+        "prompt" => "Show #{Map.get(column, :name, field_id)} in detail view",
+        "description" => "Simple detail selection example",
+        "intent" => %{
+          "view_mode" => "detail",
+          "selected" => [
+            %{
+              "field" => field_id,
+              "alias" => Map.get(column, :name, field_id),
+              "format" => "default"
+            }
+          ]
+        },
+        "params" => %{},
+        "notes" => ["Uses one detail field selection."]
+      }
+    end
+  end
+
+  defp detail_example(_, _), do: nil
+
+  defp aggregate_example(
+         {group_id, _group_type, group_col},
+         {metric_id, _metric_type, metric_col},
+         view_modes
+       ) do
+    if "aggregate" in view_modes do
+      %{
+        "id" => "aggregate_metric_by_dimension",
+        "prompt" =>
+          "Show #{Map.get(metric_col, :name, metric_id)} by #{Map.get(group_col, :name, group_id)}",
+        "description" => "Basic aggregate example",
+        "intent" => %{
+          "view_mode" => "aggregate",
+          "group_by" => [
+            %{
+              "field" => group_id,
+              "alias" => Map.get(group_col, :name, group_id),
+              "format" => "default"
+            }
+          ],
+          "aggregate" => [
+            %{
+              "field" => metric_id,
+              "alias" => Map.get(metric_col, :name, metric_id),
+              "format" => "sum"
+            }
+          ]
+        },
+        "params" => %{},
+        "notes" => ["Uses one group-by field and one aggregate metric."]
+      }
+    end
+  end
+
+  defp aggregate_example(_, _, _), do: nil
+
+  defp graph_example(
+         {time_id, _time_type, time_col},
+         {metric_id, _metric_type, metric_col},
+         view_modes
+       ) do
+    if "graph" in view_modes do
+      %{
+        "id" => "graph_metric_over_time",
+        "prompt" => "Plot #{Map.get(metric_col, :name, metric_id)} over time",
+        "description" => "Basic graph example",
+        "intent" => %{
+          "view_mode" => "graph",
+          "graph" => %{
+            "x_axis" => [
+              %{
+                "field" => time_id,
+                "alias" => Map.get(time_col, :name, time_id),
+                "format" => "default"
+              }
+            ],
+            "y_axis" => [
+              %{
+                "field" => metric_id,
+                "alias" => Map.get(metric_col, :name, metric_id),
+                "format" => "sum"
+              }
+            ],
+            "series" => [],
+            "chart_type" => "bar"
+          }
+        },
+        "params" => %{},
+        "notes" => ["Uses one time dimension and one metric."]
+      }
+    end
+  end
+
+  defp graph_example(_, _, _), do: nil
+
+  defp maybe_add_example(examples, nil), do: examples
+  defp maybe_add_example(examples, example), do: examples ++ [example]
+
+  defp scoped_columns(columns, opts) do
+    case Keyword.get(opts, :allowed_fields) do
+      nil ->
+        columns
+
+      allowed_fields ->
+        allowed = MapSet.new(Enum.map(List.wrap(allowed_fields), &to_string/1))
+
+        columns
+        |> Enum.filter(fn {field_id, _column} -> MapSet.member?(allowed, to_string(field_id)) end)
+        |> Map.new()
     end
   end
 

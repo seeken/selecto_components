@@ -43,6 +43,42 @@ defmodule SelectoComponents.AI.QueryContractTest do
     assert contract["capabilities"]["exports"]["formats"] == ["csv", "xlsx"]
   end
 
+  test "generate builds default examples when none are supplied" do
+    contract = QueryContract.generate(selecto(), views())
+
+    assert is_list(contract["examples"])
+    assert length(contract["examples"]) >= 2
+
+    example_ids = Enum.map(contract["examples"], & &1["id"])
+    assert "detail_single_field" in example_ids
+    assert "aggregate_metric_by_dimension" in example_ids
+  end
+
+  test "generate respects allowed field scoping" do
+    contract =
+      QueryContract.generate(selecto(), views(), allowed_fields: ["status", "created_at"])
+
+    field_ids = Enum.map(contract["fields"], & &1["id"])
+
+    assert field_ids == ["created_at", "status"]
+    refute "revenue" in field_ids
+  end
+
+  test "generate respects explicit field visibility overrides" do
+    contract =
+      QueryContract.generate(
+        selecto(),
+        views(),
+        field_visibility: %{"status" => "advanced", "revenue" => "hidden"}
+      )
+
+    status = Enum.find(contract["fields"], &(&1["id"] == "status"))
+    revenue = Enum.find(contract["fields"], &(&1["id"] == "revenue"))
+
+    assert status["visibility"] == "advanced"
+    assert revenue["visibility"] == "hidden"
+  end
+
   defp views do
     [
       {:detail, SelectoComponents.Views.Detail, "Detail", %{}},
