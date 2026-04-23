@@ -259,6 +259,42 @@ defmodule SelectoComponents.Form.ListOperationsTest do
            ] = updated.assigns.view_config.views.aggregate.aggregate
   end
 
+  test "list picker reorder can insert before the drop target" do
+    {:noreply, updated} =
+      TestLive.handle_info(
+        {:list_picker_reorder, form_state_query(), "aggregate", "aggregate", "agg-metric-1",
+         "agg-metric-2", "before"},
+        base_socket()
+      )
+
+    assert_preserved_cross_tab_state(updated)
+
+    assert [
+             {"agg-metric-1", "id",
+              %{"field" => "id", "format" => "count", "index" => "0", "uuid" => "agg-metric-1"}},
+             {"agg-metric-2", "amount",
+              %{"field" => "amount", "format" => "sum", "index" => "1", "uuid" => "agg-metric-2"}}
+           ] = updated.assigns.view_config.views.aggregate.aggregate
+  end
+
+  test "list picker reorder can insert after the drop target" do
+    {:noreply, updated} =
+      TestLive.handle_info(
+        {:list_picker_reorder, form_state_query(), "aggregate", "aggregate", "agg-metric-1",
+         "agg-metric-2", "after"},
+        base_socket()
+      )
+
+    assert_preserved_cross_tab_state(updated)
+
+    assert [
+             {"agg-metric-2", "amount",
+              %{"field" => "amount", "format" => "sum", "index" => "1", "uuid" => "agg-metric-2"}},
+             {"agg-metric-1", "id",
+              %{"field" => "id", "format" => "count", "index" => "0", "uuid" => "agg-metric-1"}}
+           ] = updated.assigns.view_config.views.aggregate.aggregate
+  end
+
   test "detail list picker add preserves aggregate state" do
     {:noreply, updated} =
       TestLive.handle_info(

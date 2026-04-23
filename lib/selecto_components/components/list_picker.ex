@@ -246,28 +246,51 @@ defmodule SelectoComponents.Components.ListPicker do
             this.draggedItemId = null;
             this.draggedItemEl = null;
             this.activeDropItemId = null;
+            this.activeDropPosition = null;
 
             const reorderButtonId = this.el.dataset.reorderButtonId;
             const reorderButton = reorderButtonId ? document.getElementById(reorderButtonId) : null;
 
             const itemElements = () => Array.from(this.el.querySelectorAll('[data-picker-item-id]'));
 
+            const clearDraggedState = () => {
+              this.draggedItemEl?.classList.remove('opacity-60');
+              this.draggedItemId = null;
+              this.draggedItemEl = null;
+            };
+
             const clearDropIndicators = () => {
               this.activeDropItemId = null;
+              this.activeDropPosition = null;
               itemElements().forEach((item) => {
                 item.classList.remove('ring-2', 'ring-primary/40');
               });
             };
 
-            const markDropTarget = (item) => {
+            const dropPositionFor = (item, event) => {
+              const rect = item.getBoundingClientRect();
+
+              if (!rect || rect.height <= 0) {
+                return 'after';
+              }
+
+              return event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+            };
+
+            const markDropTarget = (item, position) => {
               const targetItemId = item.dataset.pickerItemId;
 
-              if (!targetItemId || this.activeDropItemId === targetItemId) {
+              if (
+                !targetItemId ||
+                  (this.activeDropItemId === targetItemId &&
+                     this.activeDropPosition === position)
+              ) {
                 return;
               }
 
               clearDropIndicators();
               this.activeDropItemId = targetItemId;
+              this.activeDropPosition = position;
               item.classList.add('ring-2', 'ring-primary/40');
             };
 
@@ -290,9 +313,7 @@ defmodule SelectoComponents.Components.ListPicker do
               });
 
               item.addEventListener('dragend', () => {
-                this.draggedItemEl?.classList.remove('opacity-60');
-                this.draggedItemId = null;
-                this.draggedItemEl = null;
+                clearDraggedState();
                 clearDropIndicators();
               });
 
@@ -302,21 +323,31 @@ defmodule SelectoComponents.Components.ListPicker do
                 }
 
                 event.preventDefault();
-                markDropTarget(item);
+
+                if (event.dataTransfer) {
+                  event.dataTransfer.dropEffect = 'move';
+                }
+
+                markDropTarget(item, dropPositionFor(item, event));
               });
 
               item.addEventListener('drop', (event) => {
                 event.preventDefault();
 
                 const targetItemId = item.dataset.pickerItemId;
-
-                clearDropIndicators();
+                const dropPosition = dropPositionFor(item, event);
 
                 if (!this.draggedItemId || !targetItemId || this.draggedItemId === targetItemId || !reorderButton) {
+                  clearDropIndicators();
                   return;
                 }
 
-                reorderButton.dataset.itemId = this.draggedItemId;
+                const draggedItemId = this.draggedItemId;
+
+                clearDraggedState();
+                clearDropIndicators();
+
+                reorderButton.dataset.itemId = draggedItemId;
                 reorderButton.dataset.targetItemId = targetItemId;
 
                 const root = this.el.closest('[data-list-picker-root]');
@@ -325,8 +356,9 @@ defmodule SelectoComponents.Components.ListPicker do
                 this.pushEventTo(this.el, 'reorder', {
                   view: reorderButton.dataset.viewId,
                   'list-id': reorderButton.dataset.listId,
-                  item: this.draggedItemId,
+                  item: draggedItemId,
                   'target-item': targetItemId,
+                  position: dropPosition,
                   form_state_query: form ? new URLSearchParams(new FormData(form)).toString() : null
                 });
               });
@@ -714,7 +746,7 @@ defmodule SelectoComponents.Components.ListPicker do
     send(
       self(),
       {:list_picker_reorder, params["form_state_query"], params["view"], params["list-id"],
-       params["item"], params["target-item"]}
+       params["item"], params["target-item"], params["position"]}
     )
 
     {:noreply, socket}

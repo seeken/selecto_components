@@ -187,17 +187,32 @@ defmodule SelectoComponents.Form.EventHandlers.ListOperations do
       - list: The list name (e.g., "group_by", "aggregate", "x_axis")
       - dragged_uuid: The UUID of the dragged item
       - target_uuid: The UUID of the drop target item
+      - position: The drop position relative to the target ("before" or "after")
       - socket: LiveView socket
 
       ## Returns
       `{:noreply, socket}` with updated view configuration
       """
       def handle_info({:list_picker_reorder, view, list, dragged_uuid, target_uuid}, socket) do
-        handle_info({:list_picker_reorder, nil, view, list, dragged_uuid, target_uuid}, socket)
+        handle_info(
+          {:list_picker_reorder, nil, view, list, dragged_uuid, target_uuid, nil},
+          socket
+        )
       end
 
       def handle_info(
             {:list_picker_reorder, form_state_query, view, list, dragged_uuid, target_uuid},
+            socket
+          ) do
+        handle_info(
+          {:list_picker_reorder, form_state_query, view, list, dragged_uuid, target_uuid, nil},
+          socket
+        )
+      end
+
+      def handle_info(
+            {:list_picker_reorder, form_state_query, view, list, dragged_uuid, target_uuid,
+             position},
             socket
           ) do
         socket = hydrate_list_picker_form_state(socket, form_state_query)
@@ -208,7 +223,8 @@ defmodule SelectoComponents.Form.EventHandlers.ListOperations do
             view,
             list,
             dragged_uuid,
-            target_uuid
+            target_uuid,
+            position
           )
           |> ParamsState.sync_view_config_ctes(socket.assigns.selecto)
 

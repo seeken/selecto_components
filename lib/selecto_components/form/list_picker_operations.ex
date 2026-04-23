@@ -83,7 +83,7 @@ defmodule SelectoComponents.Form.ListPickerOperations do
   Returns the updated view_config with the dragged item inserted at the
   target item's position.
   """
-  def reorder_item_in_list(view_config, view, list, dragged_uuid, target_uuid) do
+  def reorder_item_in_list(view_config, view, list, dragged_uuid, target_uuid, position \\ nil) do
     view = SafeAtom.to_view_mode(view)
     list = SafeAtom.to_list_name(list)
 
@@ -114,11 +114,32 @@ defmodule SelectoComponents.Form.ListPickerOperations do
       true ->
         {dragged_item, remaining_items} = List.pop_at(item_list, dragged_index)
 
-        reordered_items = List.insert_at(remaining_items, target_index, dragged_item)
+        insert_index =
+          reorder_insert_index(dragged_index, target_index, normalize_drop_position(position))
+
+        reordered_items = List.insert_at(remaining_items, insert_index, dragged_item)
 
         put_in(view_config.views[view][list], reordered_items)
     end
   end
+
+  defp reorder_insert_index(dragged_index, target_index, :before)
+       when dragged_index < target_index,
+       do: target_index - 1
+
+  defp reorder_insert_index(_dragged_index, target_index, :before), do: target_index
+
+  defp reorder_insert_index(dragged_index, target_index, :after)
+       when dragged_index < target_index,
+       do: target_index
+
+  defp reorder_insert_index(_dragged_index, target_index, :after), do: target_index + 1
+
+  defp reorder_insert_index(_dragged_index, target_index, :legacy), do: target_index
+
+  defp normalize_drop_position(position) when position in ["before", :before], do: :before
+  defp normalize_drop_position(position) when position in ["after", :after], do: :after
+  defp normalize_drop_position(_position), do: :legacy
 
   @doc """
   Add an item to a picker list in the view configuration.
