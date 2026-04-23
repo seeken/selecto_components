@@ -333,6 +333,23 @@ defmodule SelectoComponents.Form.EventHandlers.QueryOperations do
 
         {:noreply, socket}
       end
+
+      def handle_info({:apply_ai_intent_preview, %{"preview" => preview}}, socket) do
+        next_params = Map.get(preview, "next_params", %{})
+        next_view_config = Map.get(preview, "next_view_config", %{})
+
+        socket =
+          socket
+          |> ParamsState.clear_query_caches()
+          |> ParamsState.assign_view_config(next_view_config)
+
+        updated_socket = ParamsState.view_from_params(next_params, socket)
+
+        {:noreply,
+         updated_socket
+         |> assign(:validation_locked_until_patch, true)
+         |> then(&ParamsState.state_to_url(next_params, &1, replace: true))}
+      end
     end
   end
 end

@@ -90,6 +90,39 @@ defmodule SelectoComponents.Form.QueryOperationsTest do
     assert to =~ "aggregate"
   end
 
+  test "apply_ai_intent_preview updates state and replaces url" do
+    preview = %{
+      "preview" => %{
+        "next_params" => %{
+          "view_mode" => "detail",
+          "selected" => %{"ai-field-0" => %{"field" => "id", "index" => "0"}}
+        },
+        "next_view_config" => %{
+          view_mode: "detail",
+          filters: [],
+          views: %{
+            detail: %{
+              selected: [{"ai-field-0", "id", %{}}],
+              order_by: [],
+              per_page: "30",
+              max_rows: "1000",
+              count_mode: "bounded"
+            }
+          }
+        }
+      }
+    }
+
+    socket = base_socket(%{my_path: "/pagila_films", params: %{}, selecto: selecto()})
+
+    {:noreply, updated_socket} = TestLive.handle_info({:apply_ai_intent_preview, preview}, socket)
+
+    assert updated_socket.assigns.view_config.view_mode == "detail"
+    assert updated_socket.assigns.validation_locked_until_patch == true
+    assert {:live, :patch, %{to: to, kind: :replace}} = updated_socket.redirected
+    assert to =~ "view_mode=detail"
+  end
+
   defp base_socket(overrides) do
     assigns =
       Map.merge(

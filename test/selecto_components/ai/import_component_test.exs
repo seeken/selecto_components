@@ -4,6 +4,7 @@ defmodule SelectoComponents.AI.ImportComponentTest do
   import Phoenix.LiveViewTest, only: [render_component: 2]
 
   alias SelectoComponents.AI.ImportComponent
+  alias SelectoComponents.Views
 
   test "renders import textarea and buttons" do
     html = render_component(ImportComponent, %{id: "ai-import-test"})
@@ -55,5 +56,118 @@ defmodule SelectoComponents.AI.ImportComponentTest do
     assert html =~ "detail"
     assert html =~ "aggregate"
     assert html =~ "view_mode, aggregate"
+  end
+
+  test "preview_import stores a valid import_result" do
+    socket =
+      socket(%{
+        import_json:
+          ~s({"intent_version":1,"mode":"draft","view_mode":"detail","selected":[{"field":"status"}]})
+      })
+
+    assert {:noreply, updated_socket} =
+             ImportComponent.handle_event("preview_import", %{}, socket)
+
+    assert updated_socket.assigns.import_result.ok == true
+    assert is_map(updated_socket.assigns.import_result.preview)
+  end
+
+  test "apply_import sends parent message when preview is valid" do
+    socket =
+      socket(%{
+        import_result: %{
+          ok: true,
+          preview: %{
+            "preview" => %{
+              "next_params" => %{"view_mode" => "detail"},
+              "next_view_config" => %{view_mode: "detail", filters: [], views: %{}}
+            }
+          }
+        }
+      })
+
+    assert {:noreply, _updated_socket} = ImportComponent.handle_event("apply_import", %{}, socket)
+    assert_received {:apply_ai_intent_preview, %{"preview" => _preview}}
+  end
+
+  defp socket(overrides) do
+    %Phoenix.LiveView.Socket{
+      assigns:
+        Map.merge(
+          %{
+            __changed__: %{},
+            id: "ai-import-test",
+            selecto: selecto(),
+            views: [
+              Views.spec(:detail, SelectoComponents.Views.Detail, "Detail", %{}),
+              Views.spec(:aggregate, SelectoComponents.Views.Aggregate, "Aggregate", %{}),
+              Views.spec(:graph, SelectoComponents.Views.Graph, "Graph", %{})
+            ],
+            view_config: %{
+              view_mode: "detail",
+              filters: [],
+              views: %{
+                detail: %{
+                  selected: [],
+                  order_by: [],
+                  per_page: "30",
+                  max_rows: "1000",
+                  count_mode: "bounded"
+                },
+                aggregate: %{
+                  group_by: [],
+                  aggregate: [],
+                  per_page: "100",
+                  grid: false,
+                  grid_colorize: false,
+                  grid_color_scale: "linear"
+                },
+                graph: %{x_axis: [], y_axis: [], series: [], chart_type: "bar", options: %{}}
+              }
+            },
+            presentation_context: %{},
+            import_json: "",
+            import_result: nil
+          },
+          overrides
+        )
+    }
+  end
+
+  defp selecto do
+    domain = %{
+      name: "OrdersReporting",
+      source: %{
+        source_table: "orders",
+        primary_key: :id,
+        fields: [:id, :status, :revenue, :created_at],
+        redact_fields: [],
+        columns: %{
+          id: %{type: :integer, name: "ID", colid: :id},
+          status: %{type: :string, name: "Status", colid: :status, make_filter: true},
+          revenue: %{type: :decimal, name: "Revenue", colid: :revenue},
+          created_at: %{
+            type: :utc_datetime,
+            name: "Created At",
+            colid: :created_at,
+            make_filter: true
+          }
+        },
+        associations: %{}
+      },
+      schemas: %{},
+      joins: %{},
+      filters: %{
+        "status" => %{id: "status", name: "Status", type: :string, comps: ["=", "!=", "IN"]},
+        "created_at" => %{
+          id: "created_at",
+          name: "Created At",
+          type: :utc_datetime,
+          comps: [">=", "<=", "SHORTCUT"]
+        }
+      }
+    }
+
+    Selecto.configure(domain, nil, validate: false)
   end
 end
