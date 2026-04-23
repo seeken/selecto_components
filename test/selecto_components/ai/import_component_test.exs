@@ -13,6 +13,8 @@ defmodule SelectoComponents.AI.ImportComponentTest do
     assert html =~ "Intent JSON"
     assert html =~ "Preview Intent"
     assert html =~ "Apply Intent"
+    assert html =~ "Copy Contract JSON"
+    assert html =~ "Copy Prompt Stub"
   end
 
   test "renders validation errors when import result is invalid" do
@@ -88,6 +90,27 @@ defmodule SelectoComponents.AI.ImportComponentTest do
 
     assert {:noreply, _updated_socket} = ImportComponent.handle_event("apply_import", %{}, socket)
     assert_received {:apply_ai_intent_preview, %{"preview" => _preview}}
+  end
+
+  test "copy_contract_json stores encoded contract" do
+    socket = socket(%{})
+
+    assert {:noreply, updated_socket} =
+             ImportComponent.handle_event("copy_contract_json", %{}, socket)
+
+    assert is_binary(updated_socket.assigns.contract_json)
+    assert updated_socket.assigns.contract_json =~ "query_contract_version"
+  end
+
+  test "copy_prompt_stub stores generated prompt stub" do
+    socket = socket(%{})
+
+    assert {:noreply, updated_socket} =
+             ImportComponent.handle_event("copy_prompt_stub", %{}, socket)
+
+    assert is_binary(updated_socket.assigns.prompt_stub)
+    assert updated_socket.assigns.prompt_stub =~ "return JSON only"
+    assert updated_socket.assigns.prompt_stub =~ "intent_version"
   end
 
   defp socket(overrides) do

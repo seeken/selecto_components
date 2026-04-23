@@ -9,6 +9,7 @@ defmodule SelectoComponents.AI.ImportComponent do
   use Phoenix.LiveComponent
 
   alias SelectoComponents.AI.IntentImport
+  alias SelectoComponents.AI.PromptStub
   alias SelectoComponents.AI.QueryContract
   alias SelectoComponents.Theme
 
@@ -20,6 +21,8 @@ defmodule SelectoComponents.AI.ImportComponent do
       |> assign_new(:theme, fn -> Theme.default_theme(:light) end)
       |> assign_new(:import_json, fn -> "" end)
       |> assign_new(:import_result, fn -> nil end)
+      |> assign_new(:contract_json, fn -> nil end)
+      |> assign_new(:prompt_stub, fn -> nil end)
 
     {:ok, socket}
   end
@@ -30,7 +33,9 @@ defmodule SelectoComponents.AI.ImportComponent do
       assign(assigns,
         theme: Map.get(assigns, :theme, Theme.default_theme(:light)),
         import_json: Map.get(assigns, :import_json, ""),
-        import_result: Map.get(assigns, :import_result)
+        import_result: Map.get(assigns, :import_result),
+        contract_json: Map.get(assigns, :contract_json),
+        prompt_stub: Map.get(assigns, :prompt_stub)
       )
 
     ~H"""
@@ -40,6 +45,15 @@ defmodule SelectoComponents.AI.ImportComponent do
         <p class="text-xs" style="color: var(--sc-text-secondary);">
           Paste AI intent JSON, validate it, review the preview, then apply it explicitly.
         </p>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <button type="button" phx-click="copy_contract_json" phx-target={@myself} class={Theme.slot(@theme, :button_secondary) <> " px-3 py-2 text-sm"}>
+          Copy Contract JSON
+        </button>
+        <button type="button" phx-click="copy_prompt_stub" phx-target={@myself} class={Theme.slot(@theme, :button_secondary) <> " px-3 py-2 text-sm"}>
+          Copy Prompt Stub
+        </button>
       </div>
 
       <.form for={%{}} as={:ai_import} phx-change="update_import_json" phx-target={@myself}>
@@ -103,6 +117,17 @@ defmodule SelectoComponents.AI.ImportComponent do
           </div>
         </div>
       </div>
+
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".AiImportClipboard">
+        export default {
+          mounted() {
+            this.handleEvent("selecto_ai_copy_to_clipboard", ({ text }) => {
+              if (!navigator.clipboard || typeof text !== "string") return;
+              navigator.clipboard.writeText(text);
+            });
+          }
+        }
+      </script>
     </div>
     """
   end
@@ -118,6 +143,26 @@ defmodule SelectoComponents.AI.ImportComponent do
     result = IntentImport.import(socket.assigns.import_json || "", contract, preview_socket)
 
     {:noreply, assign(socket, :import_result, result)}
+  end
+
+  def handle_event("copy_contract_json", _params, socket) do
+    contract = QueryContract.generate(socket.assigns.selecto, socket.assigns.views)
+    encoded = Jason.encode!(contract, pretty: true)
+
+    {:noreply,
+     socket
+     |> assign(:contract_json, encoded)
+     |> push_event("selecto_ai_copy_to_clipboard", %{text: encoded})}
+  end
+
+  def handle_event("copy_prompt_stub", _params, socket) do
+    contract = QueryContract.generate(socket.assigns.selecto, socket.assigns.views)
+    prompt_stub = PromptStub.build(contract)
+
+    {:noreply,
+     socket
+     |> assign(:prompt_stub, prompt_stub)
+     |> push_event("selecto_ai_copy_to_clipboard", %{text: prompt_stub})}
   end
 
   def handle_event(
