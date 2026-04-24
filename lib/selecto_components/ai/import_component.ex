@@ -23,6 +23,7 @@ defmodule SelectoComponents.AI.ImportComponent do
       |> assign_new(:import_result, fn -> nil end)
       |> assign_new(:contract_json, fn -> nil end)
       |> assign_new(:prompt_stub, fn -> nil end)
+      |> assign_new(:apply_status, fn -> nil end)
 
     {:ok, socket}
   end
@@ -35,7 +36,8 @@ defmodule SelectoComponents.AI.ImportComponent do
         import_json: Map.get(assigns, :import_json, ""),
         import_result: Map.get(assigns, :import_result),
         contract_json: Map.get(assigns, :contract_json),
-        prompt_stub: Map.get(assigns, :prompt_stub)
+        prompt_stub: Map.get(assigns, :prompt_stub),
+        apply_status: Map.get(assigns, :apply_status)
       )
 
     ~H"""
@@ -85,6 +87,17 @@ defmodule SelectoComponents.AI.ImportComponent do
         >
           Apply Intent
         </button>
+      </div>
+
+      <div
+        :if={@apply_status == :applied}
+        class="rounded-lg border px-4 py-3"
+        style="background: color-mix(in srgb, var(--sc-accent-soft) 55%, var(--sc-surface-bg)); border-color: color-mix(in srgb, var(--sc-accent) 35%, var(--sc-surface-border)); color: var(--sc-text-primary);"
+      >
+        <div class="font-semibold">AI intent applied</div>
+        <div class="text-sm" style="color: var(--sc-text-secondary);">
+          The previewed configuration has been applied to the current explorer.
+        </div>
       </div>
 
       <div :if={@import_result && @import_result[:validation]} data-selecto-ai-validation class="space-y-3">
@@ -159,7 +172,10 @@ defmodule SelectoComponents.AI.ImportComponent do
 
   @impl true
   def handle_event("update_import_json", %{"ai_import" => %{"json" => json}}, socket) do
-    {:noreply, assign(socket, :import_json, json)}
+    {:noreply,
+     socket
+     |> assign(:import_json, json)
+     |> assign(:apply_status, nil)}
   end
 
   def handle_event("preview_import", _params, socket) do
@@ -167,7 +183,10 @@ defmodule SelectoComponents.AI.ImportComponent do
     preview_socket = preview_socket(socket.assigns)
     result = IntentImport.import(socket.assigns.import_json || "", contract, preview_socket)
 
-    {:noreply, assign(socket, :import_result, result)}
+    {:noreply,
+     socket
+     |> assign(:import_result, result)
+     |> assign(:apply_status, nil)}
   end
 
   def handle_event("copy_contract_json", _params, socket) do
@@ -196,7 +215,7 @@ defmodule SelectoComponents.AI.ImportComponent do
         %{assigns: %{import_result: %{ok: true} = result}} = socket
       ) do
     send(self(), {:apply_ai_intent_preview, result.preview})
-    {:noreply, socket}
+    {:noreply, assign(socket, :apply_status, :applied)}
   end
 
   def handle_event("apply_import", _params, socket), do: {:noreply, socket}

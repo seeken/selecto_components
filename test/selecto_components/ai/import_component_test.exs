@@ -123,6 +123,37 @@ defmodule SelectoComponents.AI.ImportComponentTest do
     assert updated_socket.assigns.prompt_stub =~ "intent_version"
   end
 
+  test "apply_import marks apply status as applied" do
+    socket =
+      socket(%{
+        import_result: %{
+          ok: true,
+          preview: %{
+            "preview" => %{
+              "next_params" => %{"view_mode" => "detail"},
+              "next_view_config" => %{view_mode: "detail", filters: [], views: %{}}
+            }
+          }
+        }
+      })
+
+    assert {:noreply, updated_socket} = ImportComponent.handle_event("apply_import", %{}, socket)
+    assert updated_socket.assigns.apply_status == :applied
+  end
+
+  test "editing intent json clears applied status" do
+    socket = socket(%{apply_status: :applied})
+
+    assert {:noreply, updated_socket} =
+             ImportComponent.handle_event(
+               "update_import_json",
+               %{"ai_import" => %{"json" => "{}"}},
+               socket
+             )
+
+    assert updated_socket.assigns.apply_status == nil
+  end
+
   defp socket(overrides) do
     %Phoenix.LiveView.Socket{
       assigns:
