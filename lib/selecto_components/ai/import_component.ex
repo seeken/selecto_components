@@ -115,6 +115,31 @@ defmodule SelectoComponents.AI.ImportComponent do
           <div class="text-sm" style="color: var(--sc-text-secondary);">
             Changed sections: <%= Enum.join(@import_result.preview["preview"]["diff"]["changed_sections"], ", ") %>
           </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+            <%= for {section, diff} <- preview_sections(@import_result.preview) do %>
+              <div class={Theme.slot(@theme, :panel) <> " rounded-md p-3"} style="background: var(--sc-surface-bg);">
+                <div class="font-medium text-sm mb-2" style="color: var(--sc-text-primary); text-transform: capitalize;">
+                  {section}
+                </div>
+                <div class="text-xs" style="color: var(--sc-text-secondary);">
+                  From {length(diff["from"])} to {length(diff["to"])}
+                </div>
+                <div :if={diff["added"] != []} class="mt-2 text-xs" style="color: var(--sc-text-primary);">
+                  <div class="font-medium">Added</div>
+                  <ul class="list-disc ml-4 mt-1 space-y-1">
+                    <li :for={item <- diff["added"]}>{item}</li>
+                  </ul>
+                </div>
+                <div :if={diff["removed"] != []} class="mt-2 text-xs" style="color: var(--sc-text-secondary);">
+                  <div class="font-medium">Removed</div>
+                  <ul class="list-disc ml-4 mt-1 space-y-1">
+                    <li :for={item <- diff["removed"]}>{item}</li>
+                  </ul>
+                </div>
+              </div>
+            <% end %>
+          </div>
         </div>
       </div>
 
@@ -181,6 +206,19 @@ defmodule SelectoComponents.AI.ImportComponent do
   end
 
   defp format_path(_path), do: "root"
+
+  defp preview_sections(preview) do
+    preview
+    |> get_in(["preview", "diff", "sections"])
+    |> case do
+      sections when is_map(sections) ->
+        sections
+        |> Enum.filter(fn {_section, diff} -> diff["added"] != [] or diff["removed"] != [] end)
+
+      _ ->
+        []
+    end
+  end
 
   defp preview_socket(assigns) do
     %Phoenix.LiveView.Socket{

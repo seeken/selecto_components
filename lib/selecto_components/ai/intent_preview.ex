@@ -28,6 +28,7 @@ defmodule SelectoComponents.AI.IntentPreview do
     current_params = ParamsState.view_config_to_params(current_view_config)
     next_params = apply_result.params
     next_view_config = apply_result.view_config
+    selecto = Map.get(socket.assigns, :selecto)
 
     diff = %{
       "changed_sections" => changed_sections(current_view_config, next_view_config),
@@ -52,7 +53,8 @@ defmodule SelectoComponents.AI.IntentPreview do
           view_section_count_diff(current_view_config, next_view_config, :graph, :y_axis),
         "graph_series" =>
           view_section_count_diff(current_view_config, next_view_config, :graph, :series)
-      }
+      },
+      "sections" => build_section_diff(current_view_config, next_view_config, selecto)
     }
 
     %{
@@ -148,6 +150,138 @@ defmodule SelectoComponents.AI.IntentPreview do
   defp safe_count(list) when is_list(list), do: length(list)
   defp safe_count(map) when is_map(map), do: map_size(map)
   defp safe_count(_), do: 0
+
+  defp build_section_diff(current_view_config, next_view_config, selecto) do
+    %{
+      "filters" =>
+        list_diff(
+          get_map_value(current_view_config, :filters, []),
+          get_map_value(next_view_config, :filters, []),
+          &filter_label(&1, selecto)
+        ),
+      "selected" =>
+        list_diff(
+          view_section(current_view_config, :detail, :selected),
+          view_section(next_view_config, :detail, :selected),
+          &field_item_label(&1, selecto)
+        ),
+      "group_by" =>
+        list_diff(
+          view_section(current_view_config, :aggregate, :group_by),
+          view_section(next_view_config, :aggregate, :group_by),
+          &field_item_label(&1, selecto)
+        ),
+      "aggregate" =>
+        list_diff(
+          view_section(current_view_config, :aggregate, :aggregate),
+          view_section(next_view_config, :aggregate, :aggregate),
+          &aggregate_item_label(&1, selecto)
+        )
+    }
+  end
+
+  defp list_diff(current_items, next_items, label_fun) do
+    current_labels = current_items |> Enum.map(label_fun) |> Enum.reject(&is_nil/1)
+    next_labels = next_items |> Enum.map(label_fun) |> Enum.reject(&is_nil/1)
+
+    %{
+      "from" => current_labels,
+      "to" => next_labels,
+      "added" => next_labels -- current_labels,
+      "removed" => current_labels -- next_labels
+    }
+  end
+
+  defp filter_label({_uuid, _section, filter_value}, selecto) when is_map(filter_value) do
+    field = get_map_value(filter_value, :filter)
+    comp = get_map_value(filter_value, :comp)
+    value = get_map_value(filter_value, :value)
+
+    [field_name(field, selecto), comp, value]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.join(" ")
+  end
+
+  defp filter_label([_uuid, _section, filter_value], selecto) when is_map(filter_value),
+    do: filter_label({nil, nil, filter_value}, selecto)
+
+  defp filter_label(_item, _selecto), do: nil
+
+  defp field_item_label({_uuid, field, config}, selecto) when is_map(config) do
+    alias_name = Map.get(config, "alias") || Map.get(config, :alias)
+    format = Map.get(config, "format") || Map.get(config, :format)
+    base = display_label(alias_name || field_name(field, selecto))
+
+    if format in [nil, "", "default"] do
+      base
+    else
+      "#{base} (#{format})"
+    end
+  end
+
+  defp field_item_label([_uuid, field, config], selecto) when is_map(config),
+    do: field_item_label({nil, field, config}, selecto)
+
+  defp field_item_label(_item, _selecto), do: nil
+
+  defp aggregate_item_label({_uuid, field, config}, selecto) when is_map(config) do
+    alias_name = Map.get(config, "alias") || Map.get(config, :alias)
+    format = Map.get(config, "format") || Map.get(config, :format) || "count"
+    base = display_label(alias_name || field_name(field, selecto))
+    "#{base} (#{format})"
+  end
+
+  defp aggregate_item_label([_uuid, field, config], selecto) when is_map(config),
+    do: aggregate_item_label({nil, field, config}, selecto)
+
+  defp aggregate_item_label(_item, _selecto), do: nil
+
+  defp field_name(field, selecto) do
+    cond do
+      is_nil(selecto) ->
+        to_string(field)
+
+      column = Selecto.field(selecto, field) ->
+        Map.get(column, :name, to_string(field))
+
+      column = find_column(selecto, field) ->
+        Map.get(column, :name, to_string(field))
+
+      true ->
+        humanize_field(field)
+    end
+  end
+
+  defp find_column(selecto, field) do
+    field_str = to_string(field)
+
+    Selecto.columns(selecto)[field] ||
+      Enum.find_value(Selecto.columns(selecto), fn {key, col} ->
+        if to_string(key) == field_str or Map.get(col, :colid) == field or
+             to_string(Map.get(col, :colid)) == field_str or Map.get(col, :name) == field_str do
+          col
+        end
+      end)
+  end
+
+  defp humanize_field(field) do
+    field
+    |> to_string()
+    |> String.split([".", "_"], trim: true)
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
+  end
+
+  defp display_label(nil), do: nil
+
+  defp display_label(label) when is_binary(label) do
+    label
+    |> String.split([".", "_"], trim: true)
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
+  end
+
+  defp display_label(label), do: to_string(label)
 
   defp get_map_value(map, key, default \\ nil)
 

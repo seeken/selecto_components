@@ -47,7 +47,15 @@ defmodule SelectoComponents.AI.ImportComponentTest do
             "preview" => %{
               "diff" => %{
                 "view_mode" => %{"from" => "detail", "to" => "aggregate"},
-                "changed_sections" => ["view_mode", "aggregate"]
+                "changed_sections" => ["view_mode", "aggregate"],
+                "sections" => %{
+                  "aggregate" => %{
+                    "from" => [],
+                    "to" => ["Revenue (sum)"],
+                    "added" => ["Revenue (sum)"],
+                    "removed" => []
+                  }
+                }
               }
             }
           }
@@ -58,6 +66,8 @@ defmodule SelectoComponents.AI.ImportComponentTest do
     assert html =~ "detail"
     assert html =~ "aggregate"
     assert html =~ "view_mode, aggregate"
+    assert html =~ "Added"
+    assert html =~ "Revenue (sum)"
   end
 
   test "preview_import stores a valid import_result" do

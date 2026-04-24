@@ -22,6 +22,7 @@ defmodule SelectoComponents.AI.IntentPreviewTest do
     assert "view_mode" in preview["preview"]["diff"]["changed_sections"]
     assert "aggregate" in preview["preview"]["diff"]["changed_sections"]
     assert preview["preview"]["diff"]["counts"]["aggregate"]["to"] == 1
+    assert preview["preview"]["diff"]["sections"]["aggregate"]["added"] == ["Revenue (sum)"]
   end
 
   test "build preserves current and next view configs" do
@@ -39,6 +40,7 @@ defmodule SelectoComponents.AI.IntentPreviewTest do
     assert is_map(preview["preview"]["current_view_config"])
     assert is_map(preview["preview"]["next_view_config"])
     assert preview["preview"]["diff"]["counts"]["selected"]["to"] == 1
+    assert preview["preview"]["diff"]["sections"]["selected"]["added"] == ["Status"]
   end
 
   defp socket do
