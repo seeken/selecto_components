@@ -158,6 +158,111 @@ Recommended execution model: use Oban (or another worker system) to run due sche
 
 Map views and other extension-provided view systems are merged from domain extensions rather than hard-coded into the package.
 
+### AI Contract And Guide Endpoints
+
+`selecto_components` now includes endpoint-ready helpers for exposing:
+
+- machine-readable query contract JSON
+- AI-readable query guide text/markdown
+
+The host app should keep routing, auth, and field scoping ownership.
+
+Example Phoenix controller:
+
+```elixir
+defmodule MyAppWeb.SelectoAIController do
+  use MyAppWeb, :controller
+
+  alias MyApp.Repo
+  alias MyApp.SelectoDomains.OrderDomain
+
+  def query_contract(conn, _params) do
+    current_user = conn.assigns.current_user
+    selecto = OrderDomain.new(Repo)
+
+    views = [
+      SelectoComponents.Views.spec(:detail, SelectoComponents.Views.Detail, "Detail", %{}),
+      SelectoComponents.Views.spec(:aggregate, SelectoComponents.Views.Aggregate, "Aggregate", %{}),
+      SelectoComponents.Views.spec(:graph, SelectoComponents.Views.Graph, "Graph", %{})
+    ]
+
+    payload =
+      SelectoComponents.AI.EndpointPayloads.query_contract(
+        selecto,
+        views,
+        path: "/reports/orders",
+        allowed_fields: allowed_fields_for(current_user),
+        field_visibility: field_visibility_for(current_user),
+        saved_views_enabled: true,
+        exported_views_enabled: false,
+        ai_actions_enabled: false
+      )
+
+    conn
+    |> put_resp_content_type(payload.content_type)
+    |> send_resp(200, payload.body)
+  end
+
+  def query_guide(conn, _params) do
+    current_user = conn.assigns.current_user
+    selecto = OrderDomain.new(Repo)
+
+    views = [
+      SelectoComponents.Views.spec(:detail, SelectoComponents.Views.Detail, "Detail", %{}),
+      SelectoComponents.Views.spec(:aggregate, SelectoComponents.Views.Aggregate, "Aggregate", %{}),
+      SelectoComponents.Views.spec(:graph, SelectoComponents.Views.Graph, "Graph", %{})
+    ]
+
+    payload =
+      SelectoComponents.AI.EndpointPayloads.query_guide(
+        selecto,
+        views,
+        path: "/reports/orders",
+        allowed_fields: allowed_fields_for(current_user),
+        field_visibility: field_visibility_for(current_user),
+        format: :markdown
+      )
+
+    conn
+    |> put_resp_content_type(payload.content_type)
+    |> send_resp(200, payload.body)
+  end
+
+  defp allowed_fields_for(user) do
+    case user.role do
+      "admin" -> ["id", "status", "revenue", "created_at"]
+      _ -> ["id", "status", "created_at"]
+    end
+  end
+
+  defp field_visibility_for(_user) do
+    %{
+      "revenue" => "advanced"
+    }
+  end
+end
+```
+
+Suggested routes:
+
+```elixir
+scope "/selecto", MyAppWeb do
+  pipe_through [:browser, :require_authenticated_user]
+
+  get "/schema/orders/query-contract.json", SelectoAIController, :query_contract
+  get "/docs/orders/query-guide", SelectoAIController, :query_guide
+end
+```
+
+Recommended guidance:
+
+- require auth for these endpoints unless you have a very deliberate public-use case
+- scope fields/capabilities per user or role
+- do not expose secrets or unrestricted database metadata
+- keep links stable so external AI workflows have a durable target
+
+These endpoint helpers are generation-only. Routing, auth, caching, and response headers remain host-app-owned.
+
 ## Custom View Systems
 
 `selecto_components` supports external view packages through `SelectoComponents.Views.System`.
