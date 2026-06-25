@@ -88,6 +88,7 @@ defmodule SelectoComponents.Form.EventHandlers.ViewLifecycle do
           true ->
             with_error_handling(socket, "view-validate", fn ->
               clear_saved_view? = manual_change_from_saved_view?(params, socket)
+              promoted_filter_change? = Map.has_key?(params, "promoted_filters")
 
               socket =
                 if socket.assigns[:skip_next_validation] do
@@ -107,8 +108,8 @@ defmodule SelectoComponents.Form.EventHandlers.ViewLifecycle do
                 end
 
               socket =
-                if Map.has_key?(params, "promoted_filters") do
-                  assign(socket, view_config_dirty?: true)
+                if promoted_filter_change? do
+                  assign(socket, :view_config_dirty?, true)
                 else
                   socket
                 end

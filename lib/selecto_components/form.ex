@@ -63,10 +63,10 @@ defmodule SelectoComponents.Form do
         applied_filters:
           applied_filters(assigns.selecto, Map.get(assigns.view_config, :filters, [])),
         promoted_filters: Enum.filter(controller_filters, & &1.editable),
-        summary_filters:
+        chip_filters:
           controller_filters
           |> Enum.reject(& &1.editable)
-          |> Enum.map(& &1.summary),
+          |> Enum.map(fn filter -> %{uuid: filter.uuid, summary: filter.summary} end),
         form_state_revision: Map.get(assigns, :form_state_revision, 0),
         view_config_dirty?: Map.get(assigns, :view_config_dirty?, false),
         applied_form_state_revision:
@@ -203,7 +203,7 @@ defmodule SelectoComponents.Form do
           current_view_label={@current_view_label}
           applied_filters={@applied_filters}
           promoted_filters={@promoted_filters}
-          summary_filters={@summary_filters}
+          chip_filters={@chip_filters}
           show_view_configurator={@show_view_configurator}
         >
           <:promoted_filter :let={filter}>
@@ -288,6 +288,7 @@ defmodule SelectoComponents.Form do
           theme={@theme}
           view_config_dirty?={@view_config_dirty?}
           show_view_configurator={@show_view_configurator}
+          promoted_filters?={@promoted_filters != []}
         />
       </.form>
 
@@ -312,7 +313,6 @@ defmodule SelectoComponents.Form do
             this.bindEmailExportButton();
             this.bindScheduledExportButton();
             this.bindKeyboardShortcuts();
-            this.bindPromotedMultiSelects();
 
             this.handleEvent("selecto_export_download", (payload) => {
               const filename = payload.filename || "selecto_export.txt";
@@ -354,7 +354,6 @@ defmodule SelectoComponents.Form do
             this.bindEmailExportButton();
             this.bindScheduledExportButton();
             this.bindKeyboardShortcuts();
-            this.bindPromotedMultiSelects();
             this.flushPendingShortcutFocus();
           },
 
@@ -377,73 +376,6 @@ defmodule SelectoComponents.Form do
 
             if (this.scheduledExportCleanup) {
               this.scheduledExportCleanup();
-            }
-
-            if (this.promotedMultiSelectCleanup) {
-              this.promotedMultiSelectCleanup();
-            }
-          },
-
-          bindPromotedMultiSelects() {
-            if (this.promotedMultiSelectCleanup) {
-              this.promotedMultiSelectCleanup();
-              this.promotedMultiSelectCleanup = null;
-            }
-
-            const selects = Array.from(
-              this.el.querySelectorAll("[data-promoted-filter-multiselect='true']")
-            );
-
-            const handlers = selects.map((select) => {
-              const handler = () => {
-                this.promotedMultiSelectDirty = true;
-                window.selectoPromotedMultiSelectDirty = true;
-                this.markSubmitDirty();
-
-                const form = select.form || select.closest("form");
-
-                if (form) {
-                  form.dispatchEvent(new Event("change", { bubbles: true, cancelable: true }));
-                }
-              };
-
-              select.addEventListener("change", handler);
-
-              return { select, handler };
-            });
-
-            const submit = this.el.querySelector("[data-selecto-submit-button='true']");
-            let submitHandler = null;
-
-            if (submit) {
-              submitHandler = () => {
-                this.promotedMultiSelectDirty = false;
-                window.selectoPromotedMultiSelectDirty = false;
-              };
-
-              submit.addEventListener("click", submitHandler);
-            }
-
-            this.promotedMultiSelectCleanup = () => {
-              handlers.forEach(({ select, handler }) => {
-                select.removeEventListener("change", handler);
-              });
-
-              if (submit && submitHandler) {
-                submit.removeEventListener("click", submitHandler);
-              }
-            };
-
-            if (this.promotedMultiSelectDirty || window.selectoPromotedMultiSelectDirty) {
-              this.markSubmitDirty();
-            }
-          },
-
-          markSubmitDirty() {
-            const submit = this.el.querySelector("[data-selecto-submit-button='true']");
-
-            if (submit) {
-              submit.dataset.dirty = "true";
             }
           },
 

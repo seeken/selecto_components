@@ -152,6 +152,10 @@ defmodule SelectoComponents.FormTest do
     assert html =~ "Equals"
     assert html =~ "FormSummaryTest: Status"
     assert html =~ "Title = launch"
+    assert html =~ ~s(phx-click="filter_remove")
+    assert html =~ ~s(phx-value-uuid="f1")
+    assert html =~ ~s(data-filter-summary-remove)
+    assert html =~ ~s(data-selecto-submit-footer)
   end
 
   test "renders promoted non-equals filters with operator-specific controller editors" do

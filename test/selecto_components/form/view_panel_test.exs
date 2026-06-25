@@ -15,7 +15,7 @@ defmodule SelectoComponents.Form.ViewPanelTest do
     assert html =~ "Columns"
   end
 
-  test "renders aggregate to graph copy action when both views are available" do
+  test "renders aggregate to graph copy action inside the aggregate form meta panel" do
     html =
       render_component(
         &ViewPanel.panel/1,
@@ -44,6 +44,24 @@ defmodule SelectoComponents.Form.ViewPanelTest do
 
     assert html =~ ~s(id="copy-aggregate-to-graph")
     assert html =~ "Send to Graph"
+  end
+
+  test "does not render aggregate to graph copy action when graph view is unavailable" do
+    html =
+      render_component(
+        &ViewPanel.panel/1,
+        base_assigns(%{
+          views: [{:aggregate, SelectoComponents.Views.Aggregate, "Aggregate View", %{}}],
+          view_config: %{
+            view_mode: "aggregate",
+            filters: [],
+            views: %{aggregate: %{group_by: [], aggregate: [], per_page: "100"}}
+          }
+        })
+      )
+
+    refute html =~ ~s(id="copy-aggregate-to-graph")
+    refute html =~ "Send to Graph"
   end
 
   defp base_assigns(overrides) do

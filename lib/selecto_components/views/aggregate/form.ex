@@ -36,11 +36,20 @@ defmodule SelectoComponents.Views.Aggregate.Form do
     aggregate_grid_colorize = get_aggregate_grid_colorize(assigns.view_config)
     aggregate_grid_color_scale = get_aggregate_grid_color_scale(assigns.view_config)
 
+    group_by_items =
+      Map.get(aggregate_view, :group_by, Map.get(aggregate_view, "group_by", []))
+
+    aggregate_items =
+      Map.get(aggregate_view, :aggregate, Map.get(aggregate_view, "aggregate", []))
+
     assigns =
       assigns
       |> assign_new(:theme, fn -> Theme.default_theme(:light) end)
+      |> assign_new(:graph_view_available?, fn -> false end)
       |> assign(
         aggregate_view: aggregate_view,
+        group_by_items: group_by_items,
+        aggregate_items: aggregate_items,
         aggregate_per_page: aggregate_per_page,
         aggregate_grid: aggregate_grid,
         aggregate_grid_colorize: aggregate_grid_colorize,
@@ -120,17 +129,47 @@ defmodule SelectoComponents.Views.Aggregate.Form do
             </.sc_select_with_slot>
           </label>
         </div>
+
+        <div
+          :if={@graph_view_available?}
+          class="mt-4 flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between"
+          style="border-color: color-mix(in srgb, var(--sc-surface-border) 65%, transparent);"
+        >
+          <div>
+            <h3 class="text-sm font-semibold" style="color: var(--sc-text-primary);">
+              Build Graph From Aggregate
+            </h3>
+            <p class="text-sm" style="color: var(--sc-text-secondary);">
+              Copy aggregate groupings and metrics into the graph view.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            id="copy-aggregate-to-graph"
+            phx-click="copy_aggregate_to_graph"
+            class={Theme.slot(@theme, :button_secondary) <> " w-fit px-3 py-2 text-sm font-semibold"}
+          >
+            Send to Graph
+          </button>
+        </div>
       </div>
-      <.section_header title="Group By" />
-      <.live_component
-        module={SelectoComponents.Components.ListPicker}
-        id="group_by"
-        theme={@theme}
-        fieldname="group_by"
-        view={@view}
-        available={aggregate_selectable_columns(@columns)}
-        selected_items={Map.get(@aggregate_view, :group_by, Map.get(@aggregate_view, "group_by", []))}
-      >
+      <div class="space-y-3">
+        <.sc_collapsible_section
+          theme={@theme}
+          title="Group By"
+          summary={selected_fields_summary(@group_by_items, @columns, "No group-by fields", selecto: @selecto)}
+          open={true}
+        >
+          <.live_component
+            module={SelectoComponents.Components.ListPicker}
+            id="group_by"
+            theme={@theme}
+            fieldname="group_by"
+            view={@view}
+            available={aggregate_selectable_columns(@columns)}
+            selected_items={@group_by_items}
+          >
         <:item_summary :let={{_id, item, config, _index}}>
           <% col = get_field_for_item(@selecto, item) %>
           <% format_summary = group_by_format_summary(col, config) %>
@@ -193,17 +232,23 @@ defmodule SelectoComponents.Views.Aggregate.Form do
             </span>
           </label>
         </:between_item>
-      </.live_component>
-      <.section_header title="Aggregates" class="mt-5" />
-      <.live_component
-        module={SelectoComponents.Components.ListPicker}
-        id="aggregate"
-        theme={@theme}
-        fieldname="aggregate"
-        view={@view}
-        available={aggregate_selectable_columns(@columns)}
-        selected_items={Map.get(@aggregate_view, :aggregate, Map.get(@aggregate_view, "aggregate", []))}
-      >
+          </.live_component>
+        </.sc_collapsible_section>
+        <.sc_collapsible_section
+          theme={@theme}
+          title="Aggregates"
+          summary={selected_fields_summary(@aggregate_items, @columns, "No aggregates", selecto: @selecto)}
+          open={true}
+        >
+          <.live_component
+            module={SelectoComponents.Components.ListPicker}
+            id="aggregate"
+            theme={@theme}
+            fieldname="aggregate"
+            view={@view}
+            available={aggregate_selectable_columns(@columns)}
+            selected_items={@aggregate_items}
+          >
         <:item_summary :let={{_id, item, config, _index}}>
           <% col = get_field_for_item(@selecto, item) %>
           <span class="truncate">{summary_title(config, column_display_name(@columns, item, col))}</span>
@@ -225,20 +270,9 @@ defmodule SelectoComponents.Views.Aggregate.Form do
             theme={@theme}
           />
         </:item_form>
-      </.live_component>
-    </div>
-    """
-  end
-
-  attr(:title, :string, required: true)
-  attr(:class, :string, default: nil)
-
-  defp section_header(assigns) do
-    ~H"""
-    <div class={["mb-3 border-b pb-2", @class]} style="border-color: var(--sc-surface-border);">
-      <h3 class="text-sm font-semibold" style="color: var(--sc-text-primary);">
-        {@title}
-      </h3>
+          </.live_component>
+        </.sc_collapsible_section>
+      </div>
     </div>
     """
   end

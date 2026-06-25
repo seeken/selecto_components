@@ -145,7 +145,6 @@ defmodule SelectoComponents.Form.PromotedFilterEditor do
           size="6"
           name={"promoted_filters[#{@filter.uuid}][value][]"}
           data-promoted-filter-multiselect="true"
-          onchange="this.form?.querySelector('[data-selecto-submit-button=true]')?.setAttribute('data-dirty', 'true')"
           class={Theme.slot(@theme, :input) <> " min-h-32"}
         >
           <%= for opt <- @options do %>

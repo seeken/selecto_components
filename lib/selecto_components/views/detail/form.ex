@@ -207,16 +207,22 @@ defmodule SelectoComponents.Views.Detail.Form do
         </div>
       </div>
 
-      <.section_header title="Columns" />
-      <.live_component
-        module={SelectoComponents.Components.ListPicker}
-        id="selected"
-        theme={@theme}
-        fieldname="selected"
-        available={@columns}
-        view={@view}
-        selected_items={@selected_items_converted}
-      >
+      <div class="space-y-3">
+        <.sc_collapsible_section
+          theme={@theme}
+          title="Columns"
+          summary={selected_fields_summary(@selected_items_converted, @columns, "No columns", selecto: @selecto)}
+          open={true}
+        >
+          <.live_component
+            module={SelectoComponents.Components.ListPicker}
+            id="selected"
+            theme={@theme}
+            fieldname="selected"
+            available={@columns}
+            view={@view}
+            selected_items={@selected_items_converted}
+          >
         <:item_summary :let={{_id, item, config, _index}}>
           <% col = Selecto.field(@selecto, item) %>
           <% format_summary = detail_format_summary(col, config) %>
@@ -241,17 +247,23 @@ defmodule SelectoComponents.Views.Detail.Form do
             theme={@theme}
           />
         </:item_form>
-      </.live_component>
-      <.section_header title="Order By" class="mt-5" />
-      <.live_component
-        module={SelectoComponents.Components.ListPicker}
-        id="order_by"
-        theme={@theme}
-        fieldname="order_by"
-        available={@columns}
-        view={@view}
-        selected_items={@order_by_items_converted}
-      >
+          </.live_component>
+        </.sc_collapsible_section>
+        <.sc_collapsible_section
+          theme={@theme}
+          title="Order By"
+          summary={selected_fields_summary(@order_by_items_converted, @columns, "No sort fields", selecto: @selecto)}
+          open={true}
+        >
+          <.live_component
+            module={SelectoComponents.Components.ListPicker}
+            id="order_by"
+            theme={@theme}
+            fieldname="order_by"
+            available={@columns}
+            view={@view}
+            selected_items={@order_by_items_converted}
+          >
         <:item_summary :let={{_id, item, config, _index}}>
           <span class="truncate"><%= summary_title(config, column_display_name(@columns, item, Selecto.field(@selecto, item))) %></span>
           <span class="truncate text-sm font-normal" style="color: var(--sc-text-muted);"><%= order_direction_summary(config) %></span>
@@ -273,20 +285,9 @@ defmodule SelectoComponents.Views.Detail.Form do
             theme={@theme}
           />
         </:item_form>
-      </.live_component>
-    </div>
-    """
-  end
-
-  attr(:title, :string, required: true)
-  attr(:class, :string, default: nil)
-
-  defp section_header(assigns) do
-    ~H"""
-    <div class={["mb-3 border-b pb-2", @class]} style="border-color: var(--sc-surface-border);">
-      <h3 class="text-sm font-semibold" style="color: var(--sc-text-primary);">
-        {@title}
-      </h3>
+          </.live_component>
+        </.sc_collapsible_section>
+      </div>
     </div>
     """
   end

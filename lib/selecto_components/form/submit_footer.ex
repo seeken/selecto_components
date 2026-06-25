@@ -7,10 +7,16 @@ defmodule SelectoComponents.Form.SubmitFooter do
   attr(:theme, :map, required: true)
   attr(:view_config_dirty?, :boolean, default: false)
   attr(:show_view_configurator, :boolean, default: true)
+  attr(:promoted_filters?, :boolean, default: false)
 
   def footer(assigns) do
+    show_footer =
+      assigns.show_view_configurator or assigns.view_config_dirty? or assigns.promoted_filters?
+
+    assigns = assign(assigns, :show_footer, show_footer)
+
     ~H"""
-    <div :if={@show_view_configurator or @view_config_dirty?} class="mt-4 flex justify-end">
+    <div :if={@show_footer} class="mt-4 flex justify-end" data-selecto-submit-footer>
       <.sc_button
         id={"selecto-submit-#{@id}"}
         theme={@theme}
