@@ -599,6 +599,24 @@ defmodule SelectoComponents.Form.ParamsState do
     SessionStore.mark_form_state_applied(socket)
   end
 
+  def hydrate_form_state_query(socket, form_state_query) when is_binary(form_state_query) do
+    case String.trim(form_state_query) do
+      "" -> socket
+      query -> query |> Plug.Conn.Query.decode() |> form_params_to_state(socket)
+    end
+  end
+
+  def hydrate_form_state_query(socket, _form_state_query), do: socket
+
+  def event_form_state_query(params) when is_map(params) do
+    Map.get(params, "form_state_query") ||
+      Map.get(params, :form_state_query) ||
+      get_in(params, ["value", "form_state_query"]) ||
+      get_in(params, [:value, :form_state_query])
+  end
+
+  def event_form_state_query(_params), do: nil
+
   def canonicalize_form_params(params, selecto \\ nil, presentation_context \\ %{})
 
   def canonicalize_form_params(params, selecto, presentation_context) when is_map(params) do

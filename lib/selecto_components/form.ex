@@ -312,6 +312,7 @@ defmodule SelectoComponents.Form do
             this.bindExportDownloadButtons();
             this.bindEmailExportButton();
             this.bindScheduledExportButton();
+            this.bindCopyAggregateToGraph();
             this.bindKeyboardShortcuts();
 
             this.handleEvent("selecto_export_download", (payload) => {
@@ -353,6 +354,7 @@ defmodule SelectoComponents.Form do
             this.bindExportDownloadButtons();
             this.bindEmailExportButton();
             this.bindScheduledExportButton();
+            this.bindCopyAggregateToGraph();
             this.bindKeyboardShortcuts();
             this.flushPendingShortcutFocus();
           },
@@ -376,6 +378,10 @@ defmodule SelectoComponents.Form do
 
             if (this.scheduledExportCleanup) {
               this.scheduledExportCleanup();
+            }
+
+            if (this.copyAggregateToGraphCleanup) {
+              this.copyAggregateToGraphCleanup();
             }
           },
 
@@ -1017,6 +1023,32 @@ defmodule SelectoComponents.Form do
             this.exportDownloadCleanup = () => {
               handlers.forEach(({ button, handler }) => button.removeEventListener("click", handler));
             };
+          },
+
+          bindCopyAggregateToGraph() {
+            if (this.copyAggregateToGraphCleanup) {
+              this.copyAggregateToGraphCleanup();
+              this.copyAggregateToGraphCleanup = null;
+            }
+
+            const handler = (event) => {
+              const trigger = event.target.closest("[data-copy-aggregate-to-graph]");
+
+              if (!trigger || !this.el.contains(trigger)) {
+                return;
+              }
+
+              event.preventDefault();
+
+              const form = this.el.querySelector("form");
+              const form_state_query =
+                form != null ? new URLSearchParams(new FormData(form)).toString() : "";
+
+              this.pushEvent("copy_aggregate_to_graph", { form_state_query });
+            };
+
+            this.el.addEventListener("click", handler);
+            this.copyAggregateToGraphCleanup = () => this.el.removeEventListener("click", handler);
           },
 
           bindScheduledExportButton() {

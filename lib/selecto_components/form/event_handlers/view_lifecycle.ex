@@ -50,18 +50,10 @@ defmodule SelectoComponents.Form.EventHandlers.ViewLifecycle do
          )}
       end
 
-      def handle_event("copy_aggregate_to_graph", _params, socket) do
+      def handle_event("copy_aggregate_to_graph", params, socket) do
         with_error_handling(socket, "copy_aggregate_to_graph", fn ->
-          updated_config = ParamsState.copy_aggregate_to_graph(socket.assigns.view_config)
-
-          socket =
-            socket
-            |> assign(:current_detail_page, 0)
-            |> assign(:selected_saved_view, nil)
-            |> assign(:view_config_dirty?, true)
-            |> ParamsState.assign_view_config(updated_config)
-
-          {:noreply, socket}
+          {:noreply,
+           apply_copy_aggregate_to_graph(socket, ParamsState.event_form_state_query(params))}
         end)
       end
 
@@ -322,6 +314,28 @@ defmodule SelectoComponents.Form.EventHandlers.ViewLifecycle do
       end
 
       defp manual_change_from_saved_view?(_params, _socket), do: false
+
+      def handle_info({:copy_aggregate_to_graph, form_state_query}, socket) do
+        with_error_handling(socket, "copy_aggregate_to_graph", fn ->
+          {:noreply, apply_copy_aggregate_to_graph(socket, form_state_query)}
+        end)
+      end
+
+      defp apply_copy_aggregate_to_graph(socket, form_state_query) do
+        socket
+        |> ParamsState.hydrate_form_state_query(form_state_query)
+        |> then(fn socket ->
+          updated_config = ParamsState.copy_aggregate_to_graph(socket.assigns.view_config)
+
+          socket
+          |> assign(:current_detail_page, 0)
+          |> assign(:selected_saved_view, nil)
+          |> assign(:view_config_dirty?, true)
+          |> assign(:show_view_configurator, true)
+          |> SessionStore.assign_active_tab("view")
+          |> ParamsState.assign_view_config(updated_config)
+        end)
+      end
     end
   end
 end

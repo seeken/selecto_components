@@ -25,6 +25,7 @@ defmodule SelectoComponents.Views.Aggregate.Form do
     end
   end
 
+  @impl true
   def render(assigns) do
     aggregate_view =
       assigns.view_config
@@ -59,7 +60,7 @@ defmodule SelectoComponents.Views.Aggregate.Form do
       )
 
     ~H"""
-    <div>
+    <div id={"aggregate-form-#{@id}"}>
       <div class={Theme.slot(@theme, :panel) <> " mb-3 px-3 py-3"} style="background: var(--sc-surface-bg-alt);">
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <label for="aggregate_per_page" class="block text-sm">
@@ -147,7 +148,7 @@ defmodule SelectoComponents.Views.Aggregate.Form do
           <button
             type="button"
             id="copy-aggregate-to-graph"
-            phx-click="copy_aggregate_to_graph"
+            data-copy-aggregate-to-graph
             class={Theme.slot(@theme, :button_secondary) <> " w-fit px-3 py-2 text-sm font-semibold"}
           >
             Send to Graph

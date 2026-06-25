@@ -65,6 +65,40 @@ defmodule SelectoComponents.FormTest do
     assert html =~ "Filters"
   end
 
+  test "wires copy aggregate to graph through the root form hook" do
+    html =
+      render_component(
+        Form,
+        base_assigns(%{
+          show_view_configurator: true,
+          views: [
+            {:detail, SelectoComponents.Views.Detail, "Detail View", %{}},
+            {:aggregate, SelectoComponents.Views.Aggregate, "Aggregate View", %{}},
+            {:graph, SelectoComponents.Views.Graph, "Graph View", %{}}
+          ],
+          view_config: %{
+            view_mode: "aggregate",
+            filters: [],
+            views: %{
+              detail: %{selected: [], order_by: [], per_page: "30", max_rows: "1000"},
+              aggregate: %{group_by: [], aggregate: [], per_page: "30"},
+              graph: %{
+                x_axis: [],
+                y_axis: [],
+                series: [],
+                color_by: [],
+                chart_type: "bar",
+                options: %{}
+              }
+            }
+          }
+        })
+      )
+
+    assert html =~ ~s(data-copy-aggregate-to-graph)
+    assert html =~ ~s(phx-hook="SelectoComponents.Form.ExportDownloads")
+  end
+
   test "renders default keyboard shortcut wiring" do
     html = render_component(Form, base_assigns(%{show_view_configurator: true}))
 

@@ -86,7 +86,8 @@ defmodule SelectoComponents.Views.Aggregate.FormTest do
 
     assert html =~ ~s(id="copy-aggregate-to-graph")
     assert html =~ "Build Graph From Aggregate"
-    refute html =~ "phx-target"
+    assert html =~ ~s(data-copy-aggregate-to-graph)
+    refute html =~ "CopyAggregateToGraph"
   end
 
   test "shows the implied aggregate format in the selected item summary" do

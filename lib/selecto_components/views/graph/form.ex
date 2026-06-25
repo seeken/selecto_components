@@ -10,14 +10,14 @@ defmodule SelectoComponents.Views.Graph.Form do
 
     assigns =
       assigns
-      |> Map.put_new(:theme, Theme.default_theme(:light))
-      |> Map.put(:graph_view_key, graph_view_key)
-      |> Map.put(:graph_chart_type, map_get(graph_view, :chart_type, "bar"))
-      |> Map.put(:graph_x_axis, map_get(graph_view, :x_axis, []))
-      |> Map.put(:graph_y_axis, map_get(graph_view, :y_axis, []))
-      |> Map.put(:graph_series, map_get(graph_view, :series, []))
-      |> Map.put(:graph_color_by, map_get(graph_view, :color_by, []))
-      |> Map.put(:graph_options, map_get(graph_view, :options, %{}))
+      |> assign_new(:theme, fn -> Theme.default_theme(:light) end)
+      |> assign(:graph_view_key, graph_view_key)
+      |> assign(:graph_chart_type, map_get(graph_view, :chart_type, "bar"))
+      |> assign(:graph_x_axis, map_get(graph_view, :x_axis, []))
+      |> assign(:graph_y_axis, map_get(graph_view, :y_axis, []))
+      |> assign(:graph_series, map_get(graph_view, :series, []))
+      |> assign(:graph_color_by, map_get(graph_view, :color_by, []))
+      |> assign(:graph_options, map_get(graph_view, :options, %{}))
 
     ~H"""
     <div class="space-y-3">
