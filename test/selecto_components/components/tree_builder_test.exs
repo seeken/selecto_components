@@ -29,10 +29,12 @@ defmodule SelectoComponents.Components.TreeBuilderTest do
     assert html =~ "rounded-lg border px-3 py-2 text-sm"
   end
 
-  test "binds direct double click events for available items and logical groups" do
+  test "marks available items for double-click add via the TreeBuilder hook" do
     html = render_component(TreeBuilder, base_assigns())
 
-    assert html =~ ~s(phx-dblclick="treedrop")
+    assert html =~ ~s(class="filterable-item)
+    assert html =~ ~s(draggable="true")
+    assert html =~ ~s(phx-hook="SelectoComponents.Components.TreeBuilder.TreeBuilder")
     assert html =~ ~s(data-filter-picker-input)
     assert html =~ ~s(role="option")
     assert html =~ ~s(tabindex="-1")

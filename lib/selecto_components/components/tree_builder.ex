@@ -116,7 +116,6 @@ defmodule SelectoComponents.Components.TreeBuilder do
               draggable="true"
               tabindex="-1"
               role="option"
-              phx-dblclick="treedrop"
               phx-value-target="filters"
               phx-value-element="__AND__"
               data-item-id="__AND__"
@@ -130,7 +129,6 @@ defmodule SelectoComponents.Components.TreeBuilder do
               draggable="true"
               tabindex="-1"
               role="option"
-              phx-dblclick="treedrop"
               phx-value-target="filters"
               phx-value-element="__OR__"
               data-item-id="__OR__"
@@ -146,7 +144,6 @@ defmodule SelectoComponents.Components.TreeBuilder do
               draggable="true"
               tabindex="-1"
               role="option"
-              phx-dblclick="treedrop"
               phx-value-target="filters"
               phx-value-element={id}
               data-item-id={id}
@@ -251,17 +248,26 @@ defmodule SelectoComponents.Components.TreeBuilder do
             const hook = this;
 
             this.onDragStart = (e) => {
-              if (e.target.getAttribute('draggable') === 'true') {
-                hook.draggedElement = e.target.getAttribute('data-item-id') || e.target.id;
+              const item = e.target.closest('.filterable-item[draggable="true"]');
+              if (item) {
+                hook.draggedElement = item.getAttribute('data-item-id') || item.id;
                 e.dataTransfer.effectAllowed = 'move';
                 e.dataTransfer.setData('text/plain', hook.draggedElement);
-                e.target.style.opacity = '0.5';
+                item.style.opacity = '0.5';
               }
             };
 
             this.onDragEnd = (e) => {
-              if (e.target.getAttribute('draggable') === 'true') {
-                e.target.style.opacity = '';
+              const item = e.target.closest('.filterable-item[draggable="true"]');
+              if (item) {
+                item.style.opacity = '';
+              }
+            };
+
+            this.onDoubleClick = (e) => {
+              const item = e.target.closest('.filterable-item[draggable="true"]');
+              if (item) {
+                this.addFilterItem(item);
               }
             };
 
@@ -302,6 +308,7 @@ defmodule SelectoComponents.Components.TreeBuilder do
 
             this.el.addEventListener('dragstart', this.onDragStart);
             this.el.addEventListener('dragend', this.onDragEnd);
+            this.el.addEventListener('dblclick', this.onDoubleClick);
             this.el.addEventListener('dragover', this.onDragOver);
             this.el.addEventListener('dragleave', this.onDragLeave);
             this.el.addEventListener('drop', this.onDrop);
@@ -951,6 +958,7 @@ defmodule SelectoComponents.Components.TreeBuilder do
             destroyed() {
             this.el.removeEventListener('dragstart', this.onDragStart);
             this.el.removeEventListener('dragend', this.onDragEnd);
+            this.el.removeEventListener('dblclick', this.onDoubleClick);
             this.el.removeEventListener('dragover', this.onDragOver);
             this.el.removeEventListener('dragleave', this.onDragLeave);
             this.el.removeEventListener('drop', this.onDrop);
