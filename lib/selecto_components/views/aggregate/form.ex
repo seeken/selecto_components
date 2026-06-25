@@ -51,55 +51,74 @@ defmodule SelectoComponents.Views.Aggregate.Form do
 
     ~H"""
     <div>
-      <div class={Theme.slot(@theme, :panel) <> " mb-3 px-3 py-2"} style="background: var(--sc-surface-bg-alt);">
-        <label for="aggregate_per_page" class="text-xs font-medium" style="color: var(--sc-text-secondary);">
-          Aggregate Rows/Page
-        </label>
-        <.sc_select_with_slot theme={@theme} id="aggregate_per_page" name="aggregate_per_page" class="mt-1 w-36">
-          <%= for option <- @aggregate_per_page_options do %>
-            <option value={to_string(option)} selected={@aggregate_per_page == to_string(option)}>
-              {if option == "all", do: "All", else: option}
-            </option>
-          <% end %>
-        </.sc_select_with_slot>
-
-        <label class="mt-3 inline-flex items-center gap-2 text-sm" style="color: var(--sc-text-secondary);">
-          <input type="hidden" name="aggregate_grid" value="false" />
-          <input
-            type="checkbox"
-            name="aggregate_grid"
-            value="true"
-            checked={@aggregate_grid}
-            class="checkbox checkbox-sm"
-            style="border-color: var(--sc-surface-border); color: var(--sc-accent);"
-          />
-          Grid view (2 group-by + 1 aggregate)
-        </label>
-
-        <label class="mt-3 inline-flex items-center gap-2 text-sm" style="color: var(--sc-text-secondary);">
-          <input type="hidden" name="aggregate_grid_colorize" value="false" />
-          <input
-            type="checkbox"
-            name="aggregate_grid_colorize"
-            value="true"
-            checked={@aggregate_grid_colorize}
-            class="checkbox checkbox-sm"
-            style="border-color: var(--sc-surface-border); color: var(--sc-accent);"
-          />
-          Colorize grid cells
-        </label>
-
-        <div class="mt-3 flex flex-wrap items-center gap-3">
-          <label for="aggregate_grid_color_scale" class="text-xs font-medium" style="color: var(--sc-text-secondary);">
-            Grid Color Scale
+      <div class={Theme.slot(@theme, :panel) <> " mb-3 px-3 py-3"} style="background: var(--sc-surface-bg-alt);">
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <label for="aggregate_per_page" class="block text-sm">
+            <span class="text-xs font-medium" style="color: var(--sc-text-secondary);">
+              Aggregate Rows/Page
+            </span>
+            <.sc_select_with_slot
+              theme={@theme}
+              id="aggregate_per_page"
+              name="aggregate_per_page"
+              class="mt-1 w-full"
+            >
+              <%= for option <- @aggregate_per_page_options do %>
+                <option value={to_string(option)} selected={@aggregate_per_page == to_string(option)}>
+                  {if option == "all", do: "All", else: option}
+                </option>
+              <% end %>
+            </.sc_select_with_slot>
           </label>
-          <.sc_select_with_slot theme={@theme} id="aggregate_grid_color_scale" name="aggregate_grid_color_scale" class="w-32">
-            <%= for option <- @aggregate_grid_color_scale_options do %>
-              <option value={option} selected={@aggregate_grid_color_scale == option}>
-                {String.capitalize(option)}
-              </option>
-            <% end %>
-          </.sc_select_with_slot>
+
+          <div class="block text-sm">
+            <span class="text-xs font-medium" style="color: var(--sc-text-secondary);">Grid display</span>
+            <div class="mt-2 space-y-2">
+              <label class="flex items-center gap-2" style="color: var(--sc-text-secondary);">
+                <input type="hidden" name="aggregate_grid" value="false" />
+                <input
+                  type="checkbox"
+                  name="aggregate_grid"
+                  value="true"
+                  checked={@aggregate_grid}
+                  class="checkbox checkbox-sm"
+                  style="border-color: var(--sc-surface-border); color: var(--sc-accent);"
+                />
+                <span>Grid view (2 group-by + 1 aggregate)</span>
+              </label>
+
+              <label class="flex items-center gap-2" style="color: var(--sc-text-secondary);">
+                <input type="hidden" name="aggregate_grid_colorize" value="false" />
+                <input
+                  type="checkbox"
+                  name="aggregate_grid_colorize"
+                  value="true"
+                  checked={@aggregate_grid_colorize}
+                  class="checkbox checkbox-sm"
+                  style="border-color: var(--sc-surface-border); color: var(--sc-accent);"
+                />
+                <span>Colorize grid cells</span>
+              </label>
+            </div>
+          </div>
+
+          <label for="aggregate_grid_color_scale" class="block text-sm">
+            <span class="text-xs font-medium" style="color: var(--sc-text-secondary);">
+              Grid Color Scale
+            </span>
+            <.sc_select_with_slot
+              theme={@theme}
+              id="aggregate_grid_color_scale"
+              name="aggregate_grid_color_scale"
+              class="mt-1 w-full"
+            >
+              <%= for option <- @aggregate_grid_color_scale_options do %>
+                <option value={option} selected={@aggregate_grid_color_scale == option}>
+                  {String.capitalize(option)}
+                </option>
+              <% end %>
+            </.sc_select_with_slot>
+          </label>
         </div>
       </div>
       <.section_header title="Group By" />
