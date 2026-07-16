@@ -19,4 +19,32 @@ defmodule SelectoComponents.Form.SubmitFooterTest do
     assert html =~ ~s(data-dirty="true")
     assert html =~ "Unsaved"
   end
+
+  test "renders a submit footer when promoted filters exist and the configurator is collapsed" do
+    html =
+      render_component(&SubmitFooter.footer/1, %{
+        id: "submit-footer-test",
+        theme: Theme.default_theme(:light),
+        view_config_dirty?: false,
+        show_view_configurator: false,
+        promoted_filters?: true
+      })
+
+    assert html =~ ~s(data-selecto-submit-footer)
+    assert html =~ ~s(data-dirty="false")
+  end
+
+  test "shows dirty submit styling when promoted filters changed while collapsed" do
+    html =
+      render_component(&SubmitFooter.footer/1, %{
+        id: "submit-footer-test",
+        theme: Theme.default_theme(:light),
+        view_config_dirty?: true,
+        show_view_configurator: false,
+        promoted_filters?: true
+      })
+
+    assert html =~ ~s(data-dirty="true")
+    assert html =~ "Unsaved"
+  end
 end

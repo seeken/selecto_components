@@ -137,6 +137,108 @@ defmodule SelectoComponents.Components.Common do
     """
   end
 
+  attr(:theme, :map, required: true)
+  attr(:title, :string, required: true)
+  attr(:summary, :string, default: nil)
+  attr(:open, :boolean, default: false)
+  attr(:class, :string, default: nil)
+  slot(:inner_block, required: true)
+
+  def sc_collapsible_section(assigns) do
+    ~H"""
+    <details
+      class={[Theme.slot(@theme, :panel) <> " group overflow-hidden", @class]}
+      style="background: var(--sc-surface-bg);"
+      open={@open}
+    >
+      <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+        <div class="min-w-0">
+          <div class="text-sm font-semibold" style="color: var(--sc-text-primary);">{@title}</div>
+          <div :if={@summary not in [nil, ""]} class="truncate text-xs" style="color: var(--sc-text-muted);">
+            {@summary}
+          </div>
+        </div>
+        <span class="shrink-0 text-sm transition group-open:rotate-90" style="color: var(--sc-text-muted);">&gt;</span>
+      </summary>
+      <div class="border-t p-4" style="border-color: var(--sc-surface-border);">
+        {render_slot(@inner_block)}
+      </div>
+    </details>
+    """
+  end
+
+  def field_count_summary(items, empty_summary) do
+    case length(items || []) do
+      0 -> empty_summary
+      1 -> "1 field"
+      count -> "#{count} fields"
+    end
+  end
+
+  def selected_fields_summary(items, columns, empty_summary, opts \\ []) do
+    selecto = Keyword.get(opts, :selecto)
+
+    labels =
+      (items || [])
+      |> Enum.map(&selected_field_label(&1, columns, selecto))
+      |> Enum.reject(&(&1 in [nil, ""]))
+
+    case labels do
+      [] -> empty_summary
+      names -> Enum.join(names, ", ")
+    end
+  end
+
+  defp selected_field_label({_id, item, config}, columns, selecto),
+    do: selected_field_label(item, config, columns, selecto)
+
+  defp selected_field_label([_id, item, config], columns, selecto),
+    do: selected_field_label(item, config, columns, selecto)
+
+  defp selected_field_label(_entry, _columns, _selecto), do: nil
+
+  defp selected_field_label(item, config, columns, selecto) do
+    item_key = field_item_key(item)
+
+    field_name =
+      case Enum.find(columns || [], fn
+             {id, _name, _type} -> to_string(id) == item_key
+             {id, _name, _type, _metadata} -> to_string(id) == item_key
+             _ -> false
+           end) do
+        {_id, name, _type} -> name
+        {_id, name, _type, _metadata} -> name
+        _ -> selecto_field_name(selecto, item, item_key)
+      end
+
+    case Map.get(config || %{}, "alias", Map.get(config || %{}, :alias, "")) do
+      value when value in [nil, ""] -> field_name
+      value -> value
+    end
+  end
+
+  defp selecto_field_name(selecto, item, item_key)
+       when is_map(selecto) and is_map_key(selecto, :domain) do
+    case Selecto.field(selecto, item) do
+      %{name: name} when is_binary(name) -> name
+      _ -> item_key
+    end
+  rescue
+    _ -> item_key
+  end
+
+  defp selecto_field_name(_selecto, _item, item_key), do: item_key
+
+  defp field_item_key(item) do
+    case item do
+      {:to_char, {field, _format}} -> to_string(field)
+      {_func, field} when is_binary(field) -> field
+      value when is_atom(value) -> Atom.to_string(value)
+      value when is_binary(value) -> value
+      _ -> ""
+    end
+  end
+
   defp helper_theme(assigns), do: Map.get(assigns, :theme, Theme.default_theme(:light))
 
   defp button_variant_class(theme, :primary), do: Theme.slot(theme, :button_primary)

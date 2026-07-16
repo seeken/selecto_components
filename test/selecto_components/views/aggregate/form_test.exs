@@ -7,6 +7,89 @@ defmodule SelectoComponents.Views.Aggregate.FormTest do
   alias SelectoComponents.Views.Aggregate.Form
   alias SelectoComponents.Views.Aggregate.GroupByConfig
 
+  test "section summary lists selected group-by field names" do
+    domain = %{
+      name: "AggregateFormTest",
+      source: %{
+        source_table: "items",
+        primary_key: :id,
+        fields: [:id, :category],
+        redact_fields: [],
+        columns: %{
+          id: %{type: :integer, name: "ID", colid: :id},
+          category: %{type: :string, name: "Category", colid: :category}
+        },
+        associations: %{}
+      },
+      schemas: %{},
+      joins: %{}
+    }
+
+    html =
+      render_component(Form, %{
+        id: "aggregate-form-group-summary-test",
+        columns: [{:id, "ID", :integer}, {:category, "Category", :string}],
+        view: {:aggregate, SelectoComponents.Views.Aggregate, "Aggregate", %{}},
+        selecto: Selecto.configure(domain, nil),
+        view_config: %{
+          views: %{
+            aggregate: %{
+              group_by: [
+                {"group-1", "category", %{}},
+                {"group-2", "id", %{}}
+              ],
+              aggregate: [],
+              per_page: "30"
+            }
+          }
+        }
+      })
+
+    assert html =~ "Category, ID"
+    refute html =~ "2 fields"
+  end
+
+  test "renders copy to graph action in the meta panel when graph view is available" do
+    domain = %{
+      name: "AggregateFormTest",
+      source: %{
+        source_table: "items",
+        primary_key: :id,
+        fields: [:id],
+        redact_fields: [],
+        columns: %{
+          id: %{type: :integer, name: "ID", colid: :id}
+        },
+        associations: %{}
+      },
+      schemas: %{},
+      joins: %{}
+    }
+
+    html =
+      render_component(Form, %{
+        id: "aggregate-form-graph-copy-test",
+        columns: [{:id, "ID", :integer}],
+        view: {:aggregate, SelectoComponents.Views.Aggregate, "Aggregate", %{}},
+        selecto: Selecto.configure(domain, nil),
+        graph_view_available?: true,
+        view_config: %{
+          views: %{
+            aggregate: %{
+              group_by: [],
+              aggregate: [],
+              per_page: "30"
+            }
+          }
+        }
+      })
+
+    assert html =~ ~s(id="copy-aggregate-to-graph")
+    assert html =~ "Build Graph From Aggregate"
+    assert html =~ ~s(data-copy-aggregate-to-graph)
+    refute html =~ "CopyAggregateToGraph"
+  end
+
   test "shows the implied aggregate format in the selected item summary" do
     domain = %{
       name: "AggregateFormTest",

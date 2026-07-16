@@ -10,18 +10,18 @@ defmodule SelectoComponents.Views.Graph.Form do
 
     assigns =
       assigns
-      |> Map.put_new(:theme, Theme.default_theme(:light))
-      |> Map.put(:graph_view_key, graph_view_key)
-      |> Map.put(:graph_chart_type, map_get(graph_view, :chart_type, "bar"))
-      |> Map.put(:graph_x_axis, map_get(graph_view, :x_axis, []))
-      |> Map.put(:graph_y_axis, map_get(graph_view, :y_axis, []))
-      |> Map.put(:graph_series, map_get(graph_view, :series, []))
-      |> Map.put(:graph_color_by, map_get(graph_view, :color_by, []))
-      |> Map.put(:graph_options, map_get(graph_view, :options, %{}))
+      |> assign_new(:theme, fn -> Theme.default_theme(:light) end)
+      |> assign(:graph_view_key, graph_view_key)
+      |> assign(:graph_chart_type, map_get(graph_view, :chart_type, "bar"))
+      |> assign(:graph_x_axis, map_get(graph_view, :x_axis, []))
+      |> assign(:graph_y_axis, map_get(graph_view, :y_axis, []))
+      |> assign(:graph_series, map_get(graph_view, :series, []))
+      |> assign(:graph_color_by, map_get(graph_view, :color_by, []))
+      |> assign(:graph_options, map_get(graph_view, :options, %{}))
 
     ~H"""
     <div class="space-y-3">
-      <.graph_section
+      <.sc_collapsible_section
         theme={@theme}
         title="Chart"
         summary={chart_type_label(@graph_chart_type)}
@@ -35,12 +35,12 @@ defmodule SelectoComponents.Views.Graph.Form do
           <option value="scatter" selected={@graph_chart_type == "scatter"}>Scatter Plot</option>
           <option value="area" selected={@graph_chart_type == "area"}>Area Chart</option>
         </.sc_select_with_slot>
-      </.graph_section>
+      </.sc_collapsible_section>
        
-      <.graph_section
+      <.sc_collapsible_section
         theme={@theme}
         title="X-Axis"
-        summary={field_count_summary(@graph_x_axis, "No category fields")}
+        summary={selected_fields_summary(@graph_x_axis, @columns, "No category fields", selecto: @selecto)}
         open={true}
       >
         <.live_component
@@ -119,12 +119,12 @@ defmodule SelectoComponents.Views.Graph.Form do
             </label>
           </:between_item>
         </.live_component>
-      </.graph_section>
+      </.sc_collapsible_section>
        
-      <.graph_section
+      <.sc_collapsible_section
         theme={@theme}
         title="Y-Axis"
-        summary={field_count_summary(@graph_y_axis, "No value fields")}
+        summary={selected_fields_summary(@graph_y_axis, @columns, "No value fields", selecto: @selecto)}
         open={true}
       >
         <.live_component
@@ -160,12 +160,12 @@ defmodule SelectoComponents.Views.Graph.Form do
             />
           </:item_form>
         </.live_component>
-      </.graph_section>
+      </.sc_collapsible_section>
        
-      <.graph_section
+      <.sc_collapsible_section
         theme={@theme}
         title="Series"
-        summary={field_count_summary(@graph_series, "Optional grouping")}
+        summary={selected_fields_summary(@graph_series, @columns, "Optional grouping", selecto: @selecto)}
         open={not Enum.empty?(@graph_series)}
       >
         <p class="mb-3 text-sm" style="color: var(--sc-text-secondary);">
@@ -246,12 +246,12 @@ defmodule SelectoComponents.Views.Graph.Form do
             </label>
           </:between_item>
         </.live_component>
-      </.graph_section>
+      </.sc_collapsible_section>
        
-      <.graph_section
+      <.sc_collapsible_section
         theme={@theme}
         title="Color"
-        summary={field_count_summary(@graph_color_by, "Metric colors")}
+        summary={selected_fields_summary(@graph_color_by, @columns, "Metric colors", selecto: @selecto)}
         open={not Enum.empty?(@graph_color_by)}
       >
         <.live_component
@@ -289,9 +289,9 @@ defmodule SelectoComponents.Views.Graph.Form do
             />
           </:item_form>
         </.live_component>
-      </.graph_section>
+      </.sc_collapsible_section>
 
-      <.graph_section
+      <.sc_collapsible_section
         theme={@theme}
         title="Display Options"
         summary={display_options_summary(@graph_options)}
@@ -377,37 +377,8 @@ defmodule SelectoComponents.Views.Graph.Form do
             <span class="text-sm" style="color: var(--sc-text-secondary);">Responsive</span>
           </label>
         </div>
-      </.graph_section>
+      </.sc_collapsible_section>
     </div>
-    """
-  end
-
-  attr(:theme, :any, required: true)
-  attr(:title, :string, required: true)
-  attr(:summary, :string, default: nil)
-  attr(:open, :boolean, default: false)
-  slot(:inner_block, required: true)
-
-  defp graph_section(assigns) do
-    ~H"""
-    <details
-      class={Theme.slot(@theme, :panel) <> " group overflow-hidden"}
-      style="background: var(--sc-surface-bg);"
-      open={@open}
-    >
-      <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
-        <div class="min-w-0">
-          <div class="text-sm font-semibold" style="color: var(--sc-text-primary);">{@title}</div>
-          <div :if={@summary not in [nil, ""]} class="truncate text-xs" style="color: var(--sc-text-muted);">
-            {@summary}
-          </div>
-        </div>
-        <span class="shrink-0 text-sm transition group-open:rotate-90" style="color: var(--sc-text-muted);">&gt;</span>
-      </summary>
-      <div class="border-t p-4" style="border-color: var(--sc-surface-border);">
-        {render_slot(@inner_block)}
-      </div>
-    </details>
     """
   end
 
@@ -420,14 +391,6 @@ defmodule SelectoComponents.Views.Graph.Form do
   defp chart_type_label("scatter"), do: "Scatter plot"
   defp chart_type_label("area"), do: "Area chart"
   defp chart_type_label(_type), do: "Chart type"
-
-  defp field_count_summary(items, empty_summary) do
-    case length(items || []) do
-      0 -> empty_summary
-      1 -> "1 field"
-      count -> "#{count} fields"
-    end
-  end
 
   defp display_options_summary(options) do
     case option_value(options, :title, "") do

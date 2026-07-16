@@ -14,6 +14,7 @@ defmodule SelectoComponents.Form.ParamsState do
   alias SelectoComponents.Execution.Executor
   alias SelectoComponents.Execution.Plan
   alias SelectoComponents.Execution.ResultState
+  alias SelectoComponents.Param
   alias SelectoComponents.Views.Aggregate.Options, as: AggregateOptions
   alias SelectoComponents.Views.Detail.Options, as: DetailOptions
   alias SelectoComponents.Presentation
@@ -180,9 +181,7 @@ defmodule SelectoComponents.Form.ParamsState do
 
       {param_key, f}
     end)
-    |> Enum.sort(fn {_, f1}, {_, f2} ->
-      String.to_integer(Map.get(f1, "index", "0")) <= String.to_integer(Map.get(f2, "index", "0"))
-    end)
+    |> Enum.sort_by(fn {_, filter} -> Param.integer(Map.get(filter, "index")) end)
     |> Enum.reduce([], fn
       {param_key, %{"conjunction" => conj} = f}, acc ->
         uuid = get_map_value(f, :uuid, param_key)
@@ -598,6 +597,24 @@ defmodule SelectoComponents.Form.ParamsState do
   def mark_form_state_applied(socket) do
     SessionStore.mark_form_state_applied(socket)
   end
+
+  def hydrate_form_state_query(socket, form_state_query) when is_binary(form_state_query) do
+    case String.trim(form_state_query) do
+      "" -> socket
+      query -> query |> Plug.Conn.Query.decode() |> form_params_to_state(socket)
+    end
+  end
+
+  def hydrate_form_state_query(socket, _form_state_query), do: socket
+
+  def event_form_state_query(params) when is_map(params) do
+    Map.get(params, "form_state_query") ||
+      Map.get(params, :form_state_query) ||
+      get_in(params, ["value", "form_state_query"]) ||
+      get_in(params, [:value, :form_state_query])
+  end
+
+  def event_form_state_query(_params), do: nil
 
   def canonicalize_form_params(params, selecto \\ nil, presentation_context \\ %{})
 

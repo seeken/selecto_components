@@ -17,6 +17,10 @@ defmodule SelectoComponents.EnhancedTable.BulkActionsTest do
     assert html =~ ~s(data-bulk-action-id="domain_bulk_action_form_bulk_archive")
     assert html =~ ~s(data-bulk-action-source="generated_bulk_action_form")
     assert html =~ ~s(data-bulk-action-scope="bulk")
+    assert html =~ ~s(data-bulk-action-confirmation)
+    assert html =~ ~s(data-bulk-action-destructive)
+    assert html =~ ~s(data-confirm="Archive selected rows?")
+    assert html =~ "sc-bulk-action-destructive"
     assert html =~ "Archive selected"
     assert html =~ ~s(id="bulk-actions-menu")
   end
@@ -70,6 +74,22 @@ defmodule SelectoComponents.EnhancedTable.BulkActionsTest do
     assert html =~ "No bulk actions available"
     refute html =~ ~s(data-bulk-action-id="archive")
     refute html =~ ~s(data-bulk-action-id="delete")
+  end
+
+  test "uses scoped theme tokens for the toolbar and action menu" do
+    html =
+      render_component(BulkActions, %{
+        id: "bulk-actions-themed",
+        selected_rows: MapSet.new(),
+        selection_count: 0
+      })
+
+    assert html =~ "background: var(--sc-surface-bg-alt)"
+    assert html =~ "background: var(--sc-surface-bg)"
+    assert html =~ "color: var(--sc-text-primary)"
+    assert html =~ "sc-btn-secondary"
+    refute html =~ "bg-white"
+    refute html =~ "bg-gray-50"
   end
 
   test "opens a generated bulk action form with selected ids as the target" do
@@ -136,6 +156,7 @@ defmodule SelectoComponents.EnhancedTable.BulkActionsTest do
           description: "Archive every selected row.",
           scope: :bulk,
           capability: "orders.archive",
+          confirmation: %{required: true, message: "Archive selected rows?", destructive: true},
           execution: %{operation: :update},
           links: %{
             preview: "/orders/actions/bulk_archive/preview",

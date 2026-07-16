@@ -161,6 +161,7 @@ defmodule SelectoComponents.Form.ViewLifecycleTest do
 
     assert updated_socket.assigns.selected_saved_view == nil
     assert updated_socket.assigns.current_detail_page == 0
+    assert updated_socket.assigns.show_view_configurator == true
     assert updated_socket.assigns.view_config.view_mode == "graph"
 
     assert updated_socket.assigns.view_config.views.graph.x_axis == [
@@ -174,6 +175,77 @@ defmodule SelectoComponents.Form.ViewLifecycleTest do
     assert updated_socket.assigns.view_config.views.graph.series == [{"s1", "priority", %{}}]
     assert updated_socket.assigns.view_config.views.graph.color_by == [{"c1", "status", %{}}]
     assert Map.get(updated_socket.assigns, :executed) != true
+  end
+
+  test "copy aggregate to graph hydrates unsaved form state before copying" do
+    socket = %Phoenix.LiveView.Socket{
+      assigns: %{
+        __changed__: %{},
+        selected_saved_view: nil,
+        current_detail_page: 0,
+        active_tab: "view",
+        views: [
+          {:aggregate, SelectoComponents.Views.Aggregate, "Aggregate", []},
+          {:graph, SelectoComponents.Views.Graph, "Graph", []}
+        ],
+        selecto: nil,
+        view_config: %{
+          view_mode: "aggregate",
+          filters: [],
+          views: %{
+            aggregate: %{
+              group_by: [],
+              aggregate: [],
+              per_page: "30"
+            },
+            graph: %{
+              x_axis: [],
+              y_axis: [],
+              series: [],
+              color_by: [],
+              chart_type: "bar",
+              options: %{}
+            }
+          }
+        }
+      }
+    }
+
+    form_state_query =
+      Plug.Conn.Query.encode(%{
+        "view_mode" => "aggregate",
+        "group_by" => %{
+          "k0" => %{
+            "field" => "category",
+            "index" => "0",
+            "uuid" => "g1"
+          }
+        },
+        "aggregate" => %{
+          "k0" => %{
+            "field" => "id",
+            "index" => "0",
+            "uuid" => "a1",
+            "format" => "count"
+          }
+        }
+      })
+
+    {:noreply, updated_socket} =
+      TestLive.handle_info({:copy_aggregate_to_graph, form_state_query}, socket)
+
+    assert updated_socket.assigns.view_config.view_mode == "graph"
+    assert updated_socket.assigns.show_view_configurator == true
+    assert updated_socket.assigns.active_tab == "view"
+
+    assert updated_socket.assigns.view_config.views.graph.x_axis == [
+             {"g1", "category", %{"field" => "category", "index" => "0", "uuid" => "g1"}}
+           ]
+
+    assert updated_socket.assigns.view_config.views.graph.y_axis == [
+             {"a1", "id",
+              %{"field" => "id", "function" => "count", "index" => "0", "uuid" => "a1"}}
+           ]
   end
 
   test "save tab persists all view configurations" do

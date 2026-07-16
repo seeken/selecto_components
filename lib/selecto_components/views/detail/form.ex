@@ -85,75 +85,8 @@ defmodule SelectoComponents.Views.Detail.Form do
 
     ~H"""
     <div>
-      Columns
-      <.live_component
-        module={SelectoComponents.Components.ListPicker}
-        id="selected"
-        theme={@theme}
-        fieldname="selected"
-        available={@columns}
-        view={@view}
-        selected_items={@selected_items_converted}
-      >
-        <:item_summary :let={{_id, item, config, _index}}>
-          <% col = Selecto.field(@selecto, item) %>
-          <% format_summary = detail_format_summary(col, config) %>
-          <span class="truncate"><%= summary_title(config, column_display_name(@columns, item, col)) %></span>
-          <span :if={present_summary?(format_summary)} class="truncate text-sm font-normal" style="color: var(--sc-text-muted);"><%= format_summary %></span>
-        </:item_summary>
-        <:item_form :let={{id, item, config, index}}>
-          <% param_key = compact_param_key(index) %>
-          <input name={"selected[#{param_key}][field]"} type="hidden" value={item} />
-          <input name={"selected[#{param_key}][index]"} type="hidden" value={index} />
-          <input name={"selected[#{param_key}][uuid]"} type="hidden" value={id} />
-          <.live_component
-            module={SelectoComponents.Views.Detail.ColumnConfig}
-            id={"selected-#{id}"}
-            col={Selecto.field(@selecto, item)}
-            uuid={id}
-            item={item}
-            columns={@columns}
-            fieldname="selected"
-            prefix={"selected[#{param_key}]"}
-            config={config}
-            theme={@theme}
-          />
-        </:item_form>
-      </.live_component>
-      Order by
-      <.live_component
-        module={SelectoComponents.Components.ListPicker}
-        id="order_by"
-        theme={@theme}
-        fieldname="order_by"
-        available={@columns}
-        view={@view}
-        selected_items={@order_by_items_converted}
-      >
-        <:item_summary :let={{_id, item, config, _index}}>
-          <span class="truncate"><%= summary_title(config, column_display_name(@columns, item, Selecto.field(@selecto, item))) %></span>
-          <span class="truncate text-sm font-normal" style="color: var(--sc-text-muted);"><%= order_direction_summary(config) %></span>
-        </:item_summary>
-        <:item_form :let={{id, item, config, index}}>
-          <% param_key = compact_param_key(index) %>
-          <input name={"order_by[#{param_key}][field]"} type="hidden" value={item} />
-          <input name={"order_by[#{param_key}][index]"} type="hidden" value={index} />
-          <input name={"order_by[#{param_key}][uuid]"} type="hidden" value={id} />
-          <.live_component
-            module={SelectoComponents.Views.Detail.OrderByConfig}
-            id={"order_by-#{id}-#{:erlang.phash2(config)}"}
-            col={Selecto.field(@selecto, item)}
-            item={item}
-            columns={@columns}
-            fieldname="order_by"
-            prefix={"order_by[#{param_key}]"}
-            config={config}
-            theme={@theme}
-          />
-        </:item_form>
-      </.live_component>
-      <div class={Theme.slot(@theme, :panel) <> " mt-4 px-3 py-2"} style="background: var(--sc-surface-bg-alt);">
-        <div class="grid gap-3 md:grid-cols-3">
+      <div class={Theme.slot(@theme, :panel) <> " mb-3 px-3 py-3"} style="background: var(--sc-surface-bg-alt);">
+        <div class="grid gap-4 md:grid-cols-3">
           <label class="block text-sm">
             <span class="text-xs font-medium" style="color: var(--sc-text-secondary);">Rows Per Page</span>
             <.sc_select_with_slot theme={@theme} name="per_page" class="mt-1 w-full">
@@ -198,74 +131,162 @@ defmodule SelectoComponents.Views.Detail.Form do
             </.sc_select_with_slot>
           </label>
         </div>
-      </div>
 
-      <div class={Theme.slot(@theme, :panel) <> " mt-4 px-3 py-2"} style="background: var(--sc-surface-bg-alt);">
-        <label class="block text-sm">
-          <span class="text-xs font-medium" style="color: var(--sc-text-secondary);">Row Click Action</span>
-          <.sc_select_with_slot
-            theme={@theme}
-            id={@detail_row_click_action_dom_id}
-            name="row_click_action"
-            value={@detail_row_click_action}
-            phx-change="set_row_click_action"
-            phx-target={@myself}
-            class="mt-1 w-full"
-          >
-            <option value="" selected={@detail_row_click_action == ""}>None</option>
-            <option
-              :for={action <- @row_action_options}
-              value={action.id}
-              selected={@detail_row_click_action == action.id}
+        <div
+          class="mt-4 border-t pt-4"
+          style="border-color: color-mix(in srgb, var(--sc-surface-border) 65%, transparent);"
+        >
+          <label class="block text-sm">
+            <span class="text-xs font-medium" style="color: var(--sc-text-secondary);">Row Click Action</span>
+            <.sc_select_with_slot
+              theme={@theme}
+              id={@detail_row_click_action_dom_id}
+              name="row_click_action"
+              value={@detail_row_click_action}
+              phx-change="set_row_click_action"
+              phx-target={@myself}
+              class="mt-1 w-full"
             >
-              {action.name}
-            </option>
-          </.sc_select_with_slot>
-        </label>
+              <option value="" selected={@detail_row_click_action == ""}>None</option>
+              <option
+                :for={action <- @row_action_options}
+                value={action.id}
+                selected={@detail_row_click_action == action.id}
+              >
+                {action.name}
+              </option>
+            </.sc_select_with_slot>
+          </label>
 
-        <div :if={@selected_row_action} class="mt-3 space-y-1 text-xs" style="color: var(--sc-text-secondary);">
-          <div>
-            <span class="font-medium" style="color: var(--sc-text-primary);">Type:</span>
-            {row_action_type_label(@selected_row_action.type)}
+          <div :if={@selected_row_action} class="mt-3 space-y-1 text-xs" style="color: var(--sc-text-secondary);">
+            <div>
+              <span class="font-medium" style="color: var(--sc-text-primary);">Type:</span>
+              {row_action_type_label(@selected_row_action.type)}
+            </div>
+            <div :if={row_action_source_label(@selected_row_action)}>
+              <span class="font-medium" style="color: var(--sc-text-primary);">Source:</span>
+              {row_action_source_label(@selected_row_action)}
+            </div>
+            <div :if={@selected_row_action.description}>
+              <span class="font-medium" style="color: var(--sc-text-primary);">Description:</span>
+              {@selected_row_action.description}
+            </div>
+            <div :if={action_form_capability(@selected_row_action)}>
+              <span class="font-medium" style="color: var(--sc-text-primary);">Capability:</span>
+              {action_form_capability(@selected_row_action)}
+            </div>
+            <div>
+              <span class="font-medium" style="color: var(--sc-text-primary);">Required fields:</span>
+              {required_fields_label(@selected_row_action.required_fields)}
+            </div>
+            <div :if={action_form_endpoints_label(@selected_row_action)}>
+              <span class="font-medium" style="color: var(--sc-text-primary);">Endpoints:</span>
+              {action_form_endpoints_label(@selected_row_action)}
+            </div>
           </div>
-          <div :if={row_action_source_label(@selected_row_action)}>
-            <span class="font-medium" style="color: var(--sc-text-primary);">Source:</span>
-            {row_action_source_label(@selected_row_action)}
-          </div>
-          <div :if={@selected_row_action.description}>
-            <span class="font-medium" style="color: var(--sc-text-primary);">Description:</span>
-            {@selected_row_action.description}
-          </div>
-          <div :if={action_form_capability(@selected_row_action)}>
-            <span class="font-medium" style="color: var(--sc-text-primary);">Capability:</span>
-            {action_form_capability(@selected_row_action)}
-          </div>
-          <div>
-            <span class="font-medium" style="color: var(--sc-text-primary);">Required fields:</span>
-            {required_fields_label(@selected_row_action.required_fields)}
-          </div>
-          <div :if={action_form_endpoints_label(@selected_row_action)}>
-            <span class="font-medium" style="color: var(--sc-text-primary);">Endpoints:</span>
-            {action_form_endpoints_label(@selected_row_action)}
-          </div>
+        </div>
+
+        <div
+          class="mt-4 border-t pt-4"
+          style="border-color: color-mix(in srgb, var(--sc-surface-border) 65%, transparent);"
+        >
+          <label class="flex items-center gap-2">
+            <input type="hidden" name="prevent_denormalization" value="false" />
+            <input
+              type="checkbox"
+              name="prevent_denormalization"
+              value="true"
+              checked={@detail_prevent_denormalization}
+              class="rounded"
+              style="border-color: var(--sc-surface-border); background: var(--sc-surface-bg); color: var(--sc-accent);"
+            />
+            <span class="text-sm" style="color: var(--sc-text-secondary);">
+              Prevent Denormalization (show related data in nested tables)
+            </span>
+          </label>
         </div>
       </div>
 
-      <div class="mt-4">
-        <label class="flex items-center space-x-2">
-          <input type="hidden" name="prevent_denormalization" value="false" />
-          <input
-            type="checkbox"
-            name="prevent_denormalization"
-            value="true"
-            checked={@detail_prevent_denormalization}
-            class="rounded"
-            style="border-color: var(--sc-surface-border); background: var(--sc-surface-bg); color: var(--sc-accent);"
+      <div class="space-y-3">
+        <.sc_collapsible_section
+          theme={@theme}
+          title="Columns"
+          summary={selected_fields_summary(@selected_items_converted, @columns, "No columns", selecto: @selecto)}
+          open={true}
+        >
+          <.live_component
+            module={SelectoComponents.Components.ListPicker}
+            id="selected"
+            theme={@theme}
+            fieldname="selected"
+            available={@columns}
+            view={@view}
+            selected_items={@selected_items_converted}
+          >
+        <:item_summary :let={{_id, item, config, _index}}>
+          <% col = Selecto.field(@selecto, item) %>
+          <% format_summary = detail_format_summary(col, config) %>
+          <span class="truncate"><%= summary_title(config, column_display_name(@columns, item, col)) %></span>
+          <span :if={present_summary?(format_summary)} class="truncate text-sm font-normal" style="color: var(--sc-text-muted);"><%= format_summary %></span>
+        </:item_summary>
+        <:item_form :let={{id, item, config, index}}>
+          <% param_key = compact_param_key(index) %>
+          <input name={"selected[#{param_key}][field]"} type="hidden" value={item} />
+          <input name={"selected[#{param_key}][index]"} type="hidden" value={index} />
+          <input name={"selected[#{param_key}][uuid]"} type="hidden" value={id} />
+          <.live_component
+            module={SelectoComponents.Views.Detail.ColumnConfig}
+            id={"selected-#{id}"}
+            col={Selecto.field(@selecto, item)}
+            uuid={id}
+            item={item}
+            columns={@columns}
+            fieldname="selected"
+            prefix={"selected[#{param_key}]"}
+            config={config}
+            theme={@theme}
           />
-          <span class="text-sm" style="color: var(--sc-text-secondary);">
-            Prevent Denormalization (show related data in nested tables)
-          </span>
-        </label>
+        </:item_form>
+          </.live_component>
+        </.sc_collapsible_section>
+        <.sc_collapsible_section
+          theme={@theme}
+          title="Order By"
+          summary={selected_fields_summary(@order_by_items_converted, @columns, "No sort fields", selecto: @selecto)}
+          open={true}
+        >
+          <.live_component
+            module={SelectoComponents.Components.ListPicker}
+            id="order_by"
+            theme={@theme}
+            fieldname="order_by"
+            available={@columns}
+            view={@view}
+            selected_items={@order_by_items_converted}
+          >
+        <:item_summary :let={{_id, item, config, _index}}>
+          <span class="truncate"><%= summary_title(config, column_display_name(@columns, item, Selecto.field(@selecto, item))) %></span>
+          <span class="truncate text-sm font-normal" style="color: var(--sc-text-muted);"><%= order_direction_summary(config) %></span>
+        </:item_summary>
+        <:item_form :let={{id, item, config, index}}>
+          <% param_key = compact_param_key(index) %>
+          <input name={"order_by[#{param_key}][field]"} type="hidden" value={item} />
+          <input name={"order_by[#{param_key}][index]"} type="hidden" value={index} />
+          <input name={"order_by[#{param_key}][uuid]"} type="hidden" value={id} />
+          <.live_component
+            module={SelectoComponents.Views.Detail.OrderByConfig}
+            id={"order_by-#{id}-#{:erlang.phash2(config)}"}
+            col={Selecto.field(@selecto, item)}
+            item={item}
+            columns={@columns}
+            fieldname="order_by"
+            prefix={"order_by[#{param_key}]"}
+            config={config}
+            theme={@theme}
+          />
+        </:item_form>
+          </.live_component>
+        </.sc_collapsible_section>
       </div>
     </div>
     """

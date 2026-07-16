@@ -39,17 +39,21 @@ defmodule SelectoComponents.EnhancedTable.BulkActions do
     ~H"""
     <div id={@id} class="bulk-actions-container" data-selected-count={@selection_count}>
       <%!-- Bulk Actions Toolbar --%>
-      <div class="flex items-center px-4 py-2 bg-gray-50 border-b">
+      <div
+        class="flex items-center px-4 py-2 border-b"
+        style="background: var(--sc-surface-bg-alt); border-color: var(--sc-surface-border);"
+      >
         <div class="flex items-center space-x-4">
           <%!-- Selection Info --%>
           <%= if @selection_count > 0 do %>
             <div class="flex items-center space-x-2">
-              <span class="text-sm font-medium text-gray-700">
+              <span class="text-sm font-medium" style="color: var(--sc-text-secondary);">
                 {@selection_count} selected
               </span>
               <button
                 type="button"
-                class="text-sm text-blue-600 hover:text-blue-800"
+                class="text-sm"
+                style="color: var(--sc-accent);"
                 phx-click="clear_selection"
                 phx-target={assigns[:selection_target] || @myself}
               >
@@ -62,11 +66,11 @@ defmodule SelectoComponents.EnhancedTable.BulkActions do
           <div class="relative">
             <button
               type="button"
-              class={"px-4 py-2 bg-white border rounded-lg flex items-center space-x-2 #{if @selection_count == 0, do: "opacity-50 cursor-not-allowed", else: "hover:bg-gray-50"}"}
+              class={"sc-btn sc-btn-secondary px-4 py-2 flex items-center space-x-2 #{if @selection_count == 0, do: "opacity-60 cursor-not-allowed", else: ""}"}
               disabled={@selection_count == 0}
               phx-click={toggle_actions_menu(@menu_id)}
             >
-              <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-5 h-5" style="color: var(--sc-text-muted);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
@@ -87,10 +91,15 @@ defmodule SelectoComponents.EnhancedTable.BulkActions do
 
             <div
               id={@menu_id}
-              class="hidden absolute left-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-20"
+              class="hidden absolute left-0 mt-2 w-56 rounded-lg shadow-lg border z-20"
+              style="background: var(--sc-surface-bg); border-color: var(--sc-surface-border); color: var(--sc-text-primary);"
             >
               <%= if @actions == [] do %>
-                <div class="px-4 py-3 text-sm text-gray-500" data-bulk-actions-empty>
+                <div
+                  class="px-4 py-3 text-sm"
+                  style="color: var(--sc-text-muted);"
+                  data-bulk-actions-empty
+                >
                   No bulk actions available
                 </div>
               <% else %>
@@ -111,30 +120,39 @@ defmodule SelectoComponents.EnhancedTable.BulkActions do
     assigns = assign(assigns, :action, action)
 
     ~H"""
-    <div class={if @action.divider, do: "border-t border-gray-200", else: ""}>
+    <div
+      class={if @action.divider, do: "border-t", else: ""}
+      style={if @action.divider, do: "border-color: var(--sc-surface-border);"}
+    >
       <button
         type="button"
         class={
           "w-full text-left px-4 py-2 text-sm flex items-center space-x-2 " <>
-            if(@action.disabled?,
-              do: "cursor-not-allowed text-gray-400",
-              else: "hover:bg-gray-100"
-            )
+            bulk_action_class(@action)
         }
         disabled={@action.disabled?}
         phx-click={!@action.disabled? && execute_action_click(@menu_id, @action.id, @myself)}
+        data-confirm={if !@action.disabled? && @action.requires_confirmation?, do: @action.confirmation_message}
         data-bulk-action-id={@action.id}
         data-bulk-action-source={Map.get(@action, :source)}
         data-bulk-action-scope={Map.get(@action, :scope)}
         data-bulk-action-status={Map.get(@action, :status)}
+        data-bulk-action-confirmation={@action.requires_confirmation?}
+        data-bulk-action-destructive={@action.destructive?}
       >
-        <span class={if @action.disabled?, do: "text-gray-400", else: "text-gray-700"}>{@action.label}</span>
+        <span>{@action.label}</span>
       </button>
-      <p :if={@action.disabled? && @action.reason} class="px-4 pb-2 text-xs text-amber-700">
+      <p
+        :if={@action.disabled? && @action.reason}
+        class="px-4 pb-2 text-xs"
+        style="color: var(--sc-danger);"
+      >
         {@action.reason}
       </p>
       <%= if @action.description do %>
-        <p class="px-4 pb-2 text-xs text-gray-500">{@action.description}</p>
+        <p class="px-4 pb-2 text-xs" style="color: var(--sc-text-muted);">
+          {@action.description}
+        </p>
       <% end %>
     </div>
     """
@@ -405,7 +423,9 @@ defmodule SelectoComponents.EnhancedTable.BulkActions do
       scope: "bulk",
       type: :live_component,
       payload: payload,
-      confirmation_message: map_value(action, :confirmation_message)
+      confirmation_message: map_value(action, :confirmation_message),
+      requires_confirmation?: truthy?(map_value(action, :requires_confirmation?)),
+      destructive?: truthy?(map_value(action, :destructive?))
     }
   end
 
@@ -418,6 +438,8 @@ defmodule SelectoComponents.EnhancedTable.BulkActions do
       description: map_value(action, :description),
       divider: truthy?(map_value(action, :divider)),
       confirmation_message: map_value(action, :confirmation_message),
+      requires_confirmation?: truthy?(map_value(action, :requires_confirmation?)),
+      destructive?: truthy?(map_value(action, :destructive?)),
       disabled?: truthy?(map_value(action, :disabled?)),
       status: map_value(action, :status),
       reason: map_value(action, :reason),
@@ -448,6 +470,14 @@ defmodule SelectoComponents.EnhancedTable.BulkActions do
     |> Map.get(:selected_rows, MapSet.new())
     |> MapSet.to_list()
   end
+
+  defp bulk_action_class(%{disabled?: true}),
+    do: "sc-bulk-action sc-bulk-action-disabled cursor-not-allowed"
+
+  defp bulk_action_class(%{destructive?: true}),
+    do: "sc-bulk-action sc-bulk-action-destructive"
+
+  defp bulk_action_class(_action), do: "sc-bulk-action"
 
   defp toggle_actions_menu(menu_id) do
     JS.toggle(

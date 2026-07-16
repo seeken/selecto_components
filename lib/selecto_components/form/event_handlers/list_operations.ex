@@ -234,14 +234,8 @@ defmodule SelectoComponents.Form.EventHandlers.ListOperations do
         {:noreply, socket}
       end
 
-      defp hydrate_list_picker_form_state(socket, nil), do: socket
-      defp hydrate_list_picker_form_state(socket, ""), do: socket
-
-      defp hydrate_list_picker_form_state(socket, form_state_query)
-           when is_binary(form_state_query) do
-        form_state_query
-        |> Plug.Conn.Query.decode()
-        |> ParamsState.form_params_to_state(socket)
+      defp hydrate_list_picker_form_state(socket, form_state_query) do
+        ParamsState.hydrate_form_state_query(socket, form_state_query)
       end
     end
   end

@@ -92,12 +92,11 @@ defmodule SelectoComponents.Form.EventHandlers.FilterOperations do
       `{:noreply, socket}` with updated filters and skip_next_validation flag set
       """
       def handle_event("filter_remove", params, socket) do
-        # Update filters without triggering view execution
+        uuid = Map.get(params, "uuid")
+
         updated_filters =
           socket.assigns.view_config.filters
-          |> Enum.filter(fn
-            {u, s, _c} -> u != Map.get(params, "uuid") && s != Map.get(params, "uuid")
-          end)
+          |> Enum.reject(&filter_matches_uuid?(&1, uuid))
 
         socket =
           socket
@@ -112,6 +111,14 @@ defmodule SelectoComponents.Form.EventHandlers.FilterOperations do
 
         {:noreply, socket}
       end
+
+      defp filter_matches_uuid?({filter_uuid, _section, _config}, uuid),
+        do: to_string(filter_uuid) == to_string(uuid)
+
+      defp filter_matches_uuid?([filter_uuid, _section, _config], uuid),
+        do: to_string(filter_uuid) == to_string(uuid)
+
+      defp filter_matches_uuid?(_filter, _uuid), do: false
 
       @doc """
       Handles toggling entity type selection in polymorphic filters.

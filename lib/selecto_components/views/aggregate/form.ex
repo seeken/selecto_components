@@ -25,6 +25,7 @@ defmodule SelectoComponents.Views.Aggregate.Form do
     end
   end
 
+  @impl true
   def render(assigns) do
     aggregate_view =
       assigns.view_config
@@ -36,11 +37,20 @@ defmodule SelectoComponents.Views.Aggregate.Form do
     aggregate_grid_colorize = get_aggregate_grid_colorize(assigns.view_config)
     aggregate_grid_color_scale = get_aggregate_grid_color_scale(assigns.view_config)
 
+    group_by_items =
+      Map.get(aggregate_view, :group_by, Map.get(aggregate_view, "group_by", []))
+
+    aggregate_items =
+      Map.get(aggregate_view, :aggregate, Map.get(aggregate_view, "aggregate", []))
+
     assigns =
       assigns
       |> assign_new(:theme, fn -> Theme.default_theme(:light) end)
+      |> assign_new(:graph_view_available?, fn -> false end)
       |> assign(
         aggregate_view: aggregate_view,
+        group_by_items: group_by_items,
+        aggregate_items: aggregate_items,
         aggregate_per_page: aggregate_per_page,
         aggregate_grid: aggregate_grid,
         aggregate_grid_colorize: aggregate_grid_colorize,
@@ -50,68 +60,117 @@ defmodule SelectoComponents.Views.Aggregate.Form do
       )
 
     ~H"""
-    <div>
-      <div class={Theme.slot(@theme, :panel) <> " mb-3 px-3 py-2"} style="background: var(--sc-surface-bg-alt);">
-        <label for="aggregate_per_page" class="text-xs font-medium" style="color: var(--sc-text-secondary);">
-          Aggregate Rows/Page
-        </label>
-        <.sc_select_with_slot theme={@theme} id="aggregate_per_page" name="aggregate_per_page" class="mt-1 w-36">
-          <%= for option <- @aggregate_per_page_options do %>
-            <option value={to_string(option)} selected={@aggregate_per_page == to_string(option)}>
-              {if option == "all", do: "All", else: option}
-            </option>
-          <% end %>
-        </.sc_select_with_slot>
-
-        <label class="mt-3 inline-flex items-center gap-2 text-sm" style="color: var(--sc-text-secondary);">
-          <input type="hidden" name="aggregate_grid" value="false" />
-          <input
-            type="checkbox"
-            name="aggregate_grid"
-            value="true"
-            checked={@aggregate_grid}
-            class="checkbox checkbox-sm"
-            style="border-color: var(--sc-surface-border); color: var(--sc-accent);"
-          />
-          Grid view (2 group-by + 1 aggregate)
-        </label>
-
-        <label class="mt-3 inline-flex items-center gap-2 text-sm" style="color: var(--sc-text-secondary);">
-          <input type="hidden" name="aggregate_grid_colorize" value="false" />
-          <input
-            type="checkbox"
-            name="aggregate_grid_colorize"
-            value="true"
-            checked={@aggregate_grid_colorize}
-            class="checkbox checkbox-sm"
-            style="border-color: var(--sc-surface-border); color: var(--sc-accent);"
-          />
-          Colorize grid cells
-        </label>
-
-        <div class="mt-3 flex flex-wrap items-center gap-3">
-          <label for="aggregate_grid_color_scale" class="text-xs font-medium" style="color: var(--sc-text-secondary);">
-            Grid Color Scale
+    <div id={"aggregate-form-#{@id}"}>
+      <div class={Theme.slot(@theme, :panel) <> " mb-3 px-3 py-3"} style="background: var(--sc-surface-bg-alt);">
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <label for="aggregate_per_page" class="block text-sm">
+            <span class="text-xs font-medium" style="color: var(--sc-text-secondary);">
+              Aggregate Rows/Page
+            </span>
+            <.sc_select_with_slot
+              theme={@theme}
+              id="aggregate_per_page"
+              name="aggregate_per_page"
+              class="mt-1 w-full"
+            >
+              <%= for option <- @aggregate_per_page_options do %>
+                <option value={to_string(option)} selected={@aggregate_per_page == to_string(option)}>
+                  {if option == "all", do: "All", else: option}
+                </option>
+              <% end %>
+            </.sc_select_with_slot>
           </label>
-          <.sc_select_with_slot theme={@theme} id="aggregate_grid_color_scale" name="aggregate_grid_color_scale" class="w-32">
-            <%= for option <- @aggregate_grid_color_scale_options do %>
-              <option value={option} selected={@aggregate_grid_color_scale == option}>
-                {String.capitalize(option)}
-              </option>
-            <% end %>
-          </.sc_select_with_slot>
+
+          <div class="block text-sm">
+            <span class="text-xs font-medium" style="color: var(--sc-text-secondary);">Grid display</span>
+            <div class="mt-2 space-y-2">
+              <label class="flex items-center gap-2" style="color: var(--sc-text-secondary);">
+                <input type="hidden" name="aggregate_grid" value="false" />
+                <input
+                  type="checkbox"
+                  name="aggregate_grid"
+                  value="true"
+                  checked={@aggregate_grid}
+                  class="checkbox checkbox-sm"
+                  style="border-color: var(--sc-surface-border); color: var(--sc-accent);"
+                />
+                <span>Grid view (2 group-by + 1 aggregate)</span>
+              </label>
+
+              <label class="flex items-center gap-2" style="color: var(--sc-text-secondary);">
+                <input type="hidden" name="aggregate_grid_colorize" value="false" />
+                <input
+                  type="checkbox"
+                  name="aggregate_grid_colorize"
+                  value="true"
+                  checked={@aggregate_grid_colorize}
+                  class="checkbox checkbox-sm"
+                  style="border-color: var(--sc-surface-border); color: var(--sc-accent);"
+                />
+                <span>Colorize grid cells</span>
+              </label>
+            </div>
+          </div>
+
+          <label for="aggregate_grid_color_scale" class="block text-sm">
+            <span class="text-xs font-medium" style="color: var(--sc-text-secondary);">
+              Grid Color Scale
+            </span>
+            <.sc_select_with_slot
+              theme={@theme}
+              id="aggregate_grid_color_scale"
+              name="aggregate_grid_color_scale"
+              class="mt-1 w-full"
+            >
+              <%= for option <- @aggregate_grid_color_scale_options do %>
+                <option value={option} selected={@aggregate_grid_color_scale == option}>
+                  {String.capitalize(option)}
+                </option>
+              <% end %>
+            </.sc_select_with_slot>
+          </label>
+        </div>
+
+        <div
+          :if={@graph_view_available?}
+          class="mt-4 flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between"
+          style="border-color: color-mix(in srgb, var(--sc-surface-border) 65%, transparent);"
+        >
+          <div>
+            <h3 class="text-sm font-semibold" style="color: var(--sc-text-primary);">
+              Build Graph From Aggregate
+            </h3>
+            <p class="text-sm" style="color: var(--sc-text-secondary);">
+              Copy aggregate groupings and metrics into the graph view.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            id="copy-aggregate-to-graph"
+            data-copy-aggregate-to-graph
+            class={Theme.slot(@theme, :button_secondary) <> " w-fit px-3 py-2 text-sm font-semibold"}
+          >
+            Send to Graph
+          </button>
         </div>
       </div>
-      <.section_header title="Group By" />
-      <.live_component
-        module={SelectoComponents.Components.ListPicker}
-        id="group_by"
-        theme={@theme}
-        fieldname="group_by"
-        view={@view}
-        available={aggregate_selectable_columns(@columns)}
-        selected_items={Map.get(@aggregate_view, :group_by, Map.get(@aggregate_view, "group_by", []))}
-      >
+      <div class="space-y-3">
+        <.sc_collapsible_section
+          theme={@theme}
+          title="Group By"
+          summary={selected_fields_summary(@group_by_items, @columns, "No group-by fields", selecto: @selecto)}
+          open={true}
+        >
+          <.live_component
+            module={SelectoComponents.Components.ListPicker}
+            id="group_by"
+            theme={@theme}
+            fieldname="group_by"
+            view={@view}
+            available={aggregate_selectable_columns(@columns)}
+            selected_items={@group_by_items}
+          >
         <:item_summary :let={{_id, item, config, _index}}>
           <% col = get_field_for_item(@selecto, item) %>
           <% format_summary = group_by_format_summary(col, config) %>
@@ -174,17 +233,23 @@ defmodule SelectoComponents.Views.Aggregate.Form do
             </span>
           </label>
         </:between_item>
-      </.live_component>
-      <.section_header title="Aggregates" class="mt-5" />
-      <.live_component
-        module={SelectoComponents.Components.ListPicker}
-        id="aggregate"
-        theme={@theme}
-        fieldname="aggregate"
-        view={@view}
-        available={aggregate_selectable_columns(@columns)}
-        selected_items={Map.get(@aggregate_view, :aggregate, Map.get(@aggregate_view, "aggregate", []))}
-      >
+          </.live_component>
+        </.sc_collapsible_section>
+        <.sc_collapsible_section
+          theme={@theme}
+          title="Aggregates"
+          summary={selected_fields_summary(@aggregate_items, @columns, "No aggregates", selecto: @selecto)}
+          open={true}
+        >
+          <.live_component
+            module={SelectoComponents.Components.ListPicker}
+            id="aggregate"
+            theme={@theme}
+            fieldname="aggregate"
+            view={@view}
+            available={aggregate_selectable_columns(@columns)}
+            selected_items={@aggregate_items}
+          >
         <:item_summary :let={{_id, item, config, _index}}>
           <% col = get_field_for_item(@selecto, item) %>
           <span class="truncate">{summary_title(config, column_display_name(@columns, item, col))}</span>
@@ -206,20 +271,9 @@ defmodule SelectoComponents.Views.Aggregate.Form do
             theme={@theme}
           />
         </:item_form>
-      </.live_component>
-    </div>
-    """
-  end
-
-  attr(:title, :string, required: true)
-  attr(:class, :string, default: nil)
-
-  defp section_header(assigns) do
-    ~H"""
-    <div class={["mb-3 border-b pb-2", @class]} style="border-color: var(--sc-surface-border);">
-      <h3 class="text-sm font-semibold" style="color: var(--sc-text-primary);">
-        {@title}
-      </h3>
+          </.live_component>
+        </.sc_collapsible_section>
+      </div>
     </div>
     """
   end

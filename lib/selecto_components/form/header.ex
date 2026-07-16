@@ -1,6 +1,8 @@
 defmodule SelectoComponents.Form.Header do
   use Phoenix.Component
 
+  import SelectoComponents.Components.Common
+
   alias Phoenix.LiveView.JS
   alias SelectoComponents.Theme
 
@@ -10,7 +12,7 @@ defmodule SelectoComponents.Form.Header do
   attr(:current_view_label, :string, required: true)
   attr(:applied_filters, :list, default: [])
   attr(:promoted_filters, :list, default: [])
-  attr(:summary_filters, :list, default: [])
+  attr(:chip_filters, :list, default: [])
   attr(:show_view_configurator, :boolean, default: true)
 
   slot(:promoted_filter)
@@ -68,34 +70,58 @@ defmodule SelectoComponents.Form.Header do
               :for={filter <- @promoted_filters}
               class="rounded-lg border p-3"
               style="border-color: var(--sc-surface-border); background: var(--sc-surface-bg);"
+              data-promoted-filter-card={filter.uuid}
             >
-              <label
-                class="mb-1 block text-xs font-semibold tracking-[0.08em]"
-                style="color: var(--sc-text-muted);"
-              >
-                {filter.label}
-              </label>
+              <div class="mb-1 flex items-start justify-between gap-2">
+                <label
+                  class="block min-w-0 flex-1 text-xs font-semibold tracking-[0.08em]"
+                  style="color: var(--sc-text-muted);"
+                >
+                  {filter.label}
+                </label>
+                <.sc_x_button
+                  theme={@theme}
+                  phx-click="filter_remove"
+                  phx-value-uuid={filter.uuid}
+                  data-filter-summary-remove
+                  title="Remove filter"
+                  aria-label={"Remove #{filter.label} filter"}
+                />
+              </div>
               {render_slot(@promoted_filter, filter)}
             </div>
           </div>
 
-          <div :if={Enum.empty?(@applied_filters) or @summary_filters != []} class="flex flex-wrap items-center gap-2">
+          <div :if={Enum.empty?(@applied_filters) or @chip_filters != []} class="flex flex-wrap items-center gap-2">
             <%= if Enum.empty?(@applied_filters) do %>
               <span class="text-sm" style="color: var(--sc-text-secondary);">
                 No filters applied
               </span>
             <% else %>
-              <%= for filter_label <- Enum.take(@summary_filters, 4) do %>
+              <%= for filter <- Enum.take(@chip_filters, 4) do %>
                 <span
-                  class="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium"
+                  class="inline-flex items-center gap-1 rounded-full border py-1 pl-2.5 pr-1 text-xs font-medium"
                   style="border-color: var(--sc-surface-border); background: var(--sc-surface-bg); color: var(--sc-text-secondary);"
+                  data-filter-summary-chip={filter.uuid}
                 >
-                  {filter_label}
+                  <span class="truncate">{filter.summary}</span>
+                  <button
+                    type="button"
+                    phx-click="filter_remove"
+                    phx-value-uuid={filter.uuid}
+                    data-filter-summary-remove
+                    title="Remove filter"
+                    aria-label={"Remove #{filter.summary} filter"}
+                    class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-sm leading-none transition"
+                    style="color: var(--sc-text-muted);"
+                  >
+                    <span aria-hidden="true">×</span>
+                  </button>
                 </span>
               <% end %>
 
-              <span :if={length(@summary_filters) > 4} class="text-xs font-medium" style="color: var(--sc-text-muted);">
-                +{length(@summary_filters) - 4} more
+              <span :if={length(@chip_filters) > 4} class="text-xs font-medium" style="color: var(--sc-text-muted);">
+                +{length(@chip_filters) - 4} more
               </span>
             <% end %>
           </div>
