@@ -172,6 +172,16 @@ defmodule SelectoComponents.ActionsTest do
     assert action.reason == "Target is already closed"
   end
 
+  test "a resolver cannot reveal an explicitly hidden action" do
+    assert [] =
+             Actions.available(write_contract(),
+               decisions: %{"approve_order" => %{status: :hidden}},
+               capability_resolver: fn _request ->
+                 Selecto.Capabilities.deny(:role_denied)
+               end
+             )
+  end
+
   test "filters hidden actions and can scope visible actions" do
     contract =
       write_contract(%{

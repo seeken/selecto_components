@@ -520,12 +520,18 @@ defmodule SelectoComponents.Actions do
   defp merge_resolver_decision(explicit_decision, resolver_decision) do
     explicit = normalize_decision(explicit_decision, "enabled")
     resolver = normalize_decision(resolver_decision, "enabled")
+    explicit_status = normalize_status(map_value(explicit, :status))
+    resolver_status = normalize_status(map_value(resolver, :status))
 
-    case normalize_status(map_value(resolver, :status)) do
-      "enabled" -> explicit
-      _status -> Map.merge(explicit, resolver)
-    end
+    if status_rank(explicit_status) >= status_rank(resolver_status),
+      do: explicit,
+      else: resolver
   end
+
+  defp status_rank("enabled"), do: 0
+  defp status_rank("disabled"), do: 1
+  defp status_rank("hidden"), do: 2
+  defp status_rank(_status), do: 1
 
   defp action_label(action) do
     map_value(action, :label) ||

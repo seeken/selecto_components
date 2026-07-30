@@ -2,6 +2,16 @@
 CHANGES
 =======
 
+V NEXT
+--------
+
+- Added `mix selecto_components.verify` with bounded-exhaustive verification of
+  action-visibility monotonicity.
+- Fixed decision merging so a resolver cannot downgrade an explicitly hidden
+  action to disabled and make it visible.
+- Updated the core Selecto lower bound to `0.4.8` for the shared bounded model
+  checker.
+
 V 0.4.8
 --------
 
