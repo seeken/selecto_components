@@ -37,7 +37,7 @@ It is the package you use when you want users to:
 ```elixir
 def deps do
   [
-    {:selecto_components, ">= 0.4.8 and < 0.6.0"},
+    {:selecto_components, ">= 0.4.9 and < 0.6.0"},
     {:selecto, ">= 0.4.8 and < 0.6.0"},
     {:selecto_db_postgresql, ">= 0.4.4 and < 0.6.0"},
     {:selecto_mix, ">= 0.4.6 and < 0.6.0"}

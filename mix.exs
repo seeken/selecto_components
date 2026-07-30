@@ -4,7 +4,7 @@ defmodule SelectoComponents.MixProject do
   def project do
     [
       app: :selecto_components,
-      version: "0.4.8",
+      version: "0.4.9",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       description:
