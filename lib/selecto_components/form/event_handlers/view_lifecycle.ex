@@ -37,6 +37,7 @@ defmodule SelectoComponents.Form.EventHandlers.ViewLifecycle do
       ## Returns
       `{:noreply, socket}` with updated active_tab assign
       """
+      @impl true
       def handle_event("set_active_tab", params, socket) do
         {:noreply, SessionStore.assign_active_tab(socket, Map.get(params, "tab"))}
       end
@@ -315,6 +316,7 @@ defmodule SelectoComponents.Form.EventHandlers.ViewLifecycle do
 
       defp manual_change_from_saved_view?(_params, _socket), do: false
 
+      @impl true
       def handle_info({:copy_aggregate_to_graph, form_state_query}, socket) do
         with_error_handling(socket, "copy_aggregate_to_graph", fn ->
           {:noreply, apply_copy_aggregate_to_graph(socket, form_state_query)}

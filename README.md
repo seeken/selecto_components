@@ -28,7 +28,7 @@ It is the package you use when you want users to:
 
 - Phoenix 1.7+
 - Elixir ~> 1.18
-- `selecto >= 0.4.6 and < 0.6.0`
+- `selecto >= 0.4.8 and < 0.6.0`
 - an adapter package such as `selecto_db_postgresql >= 0.4.4 and < 0.6.0`
 - `selecto_mix >= 0.4.6 and < 0.6.0` if you want generators and installation helpers
 
@@ -37,13 +37,20 @@ It is the package you use when you want users to:
 ```elixir
 def deps do
   [
-    {:selecto_components, ">= 0.4.8 and < 0.6.0"},
-    {:selecto, ">= 0.4.6 and < 0.6.0"},
+    {:selecto_components, ">= 0.4.9 and < 0.6.0"},
+    {:selecto, ">= 0.4.8 and < 0.6.0"},
     {:selecto_db_postgresql, ">= 0.4.4 and < 0.6.0"},
     {:selecto_mix, ">= 0.4.6 and < 0.6.0"}
   ]
 end
 ```
+
+## Formal verification
+
+`mix selecto_components.verify --output PATH` exhaustively checks the built-in
+action-visibility model. It proves that target decisions and host capability
+policy combine monotonically: hidden outranks disabled, disabled outranks
+enabled, and stricter policy cannot reveal an action.
 
 Then run the recommended integration task:
 
