@@ -12,6 +12,13 @@ defmodule SelectoComponents.Execution.Executor do
 
   @spec run(SelectoComponents.Execution.Plan.t(), Phoenix.LiveView.Socket.t()) :: Result.t()
   def run(plan, socket) do
+    case validate_plan(plan) do
+      :ok -> execute(plan, socket)
+      {:error, error} -> build_selecto_error_result(plan, error, plan.view_meta, nil)
+    end
+  end
+
+  defp execute(plan, socket) do
     {query_result, view_meta, page_query_cache} =
       QueryHelpers.execute_query_with_pagination(
         plan.selecto,
@@ -40,6 +47,20 @@ defmodule SelectoComponents.Execution.Executor do
         build_generic_error_result(plan, error, view_meta, page_query_cache)
     end
   end
+
+  defp validate_plan(%{selected_view: :aggregate, view_set: view_set}) do
+    if list_field(view_set, :groups) == [] and list_field(view_set, :aggregates) == [] do
+      {:error,
+       Selecto.Error.validation_error(
+         "Aggregate views require at least one group-by field or aggregate metric",
+         %{view_mode: "aggregate"}
+       )}
+    else
+      :ok
+    end
+  end
+
+  defp validate_plan(_plan), do: :ok
 
   defp build_success_result(
          plan,
@@ -141,7 +162,12 @@ defmodule SelectoComponents.Execution.Executor do
         execution_error_opts(error, plan.params, operation: "view-apply")
       )
 
-    {error_sql, error_params} = safe_to_sql(plan.selecto)
+    {error_sql, error_params} =
+      if Map.get(error, :type) == :validation_error do
+        {nil, []}
+      else
+        safe_to_sql(plan.selecto)
+      end
 
     %Result{
       selecto: plan.selecto,

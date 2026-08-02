@@ -30,6 +30,24 @@ defmodule SelectoComponents.Execution.ExecutorTest do
     assert Map.has_key?(Result.to_assigns(result), :execution_error)
   end
 
+  test "run rejects an empty aggregate before generating SQL" do
+    socket =
+      base_socket()
+      |> Component.assign(:view_config, %{
+        view_mode: "aggregate",
+        filters: [],
+        views: %{aggregate: %{group_by: [], aggregate: []}}
+      })
+
+    plan = Plan.build(%{"view_mode" => "aggregate"}, socket)
+    result = Executor.run(plan, socket)
+
+    refute result.executed
+    assert result.applied_view == "aggregate"
+    assert result.execution_error.user_message =~ "require at least one group-by field"
+    assert result.last_query_info.sql == nil
+  end
+
   defp base_socket do
     %Phoenix.LiveView.Socket{
       assigns: %{
