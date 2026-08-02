@@ -8,6 +8,13 @@ defmodule SelectoComponents.QueryContract.Policy do
   """
 
   @field_surface_keys ~w(detail_selectable filterable sortable groupable aggregatable)
+  @field_surface_atom_keys %{
+    "detail_selectable" => :detail_selectable,
+    "filterable" => :filterable,
+    "sortable" => :sortable,
+    "groupable" => :groupable,
+    "aggregatable" => :aggregatable
+  }
 
   @doc """
   Applies a capability resolver to field and filter entries in a query contract.
@@ -540,7 +547,9 @@ defmodule SelectoComponents.QueryContract.Policy do
     |> put_entry_value(:comparators, [])
     |> put_entry_value(:aggregate_functions, [])
     |> then(fn entry ->
-      Enum.reduce(@field_surface_keys, entry, &put_entry_value(&2, String.to_atom(&1), false))
+      Enum.reduce(@field_surface_keys, entry, fn key, acc ->
+        put_entry_value(acc, Map.fetch!(@field_surface_atom_keys, key), false)
+      end)
     end)
   end
 

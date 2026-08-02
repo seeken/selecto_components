@@ -41,7 +41,10 @@ defmodule SelectoComponents.Execution.QueryHelpers do
     if AggregateOptions.aggregate_view_mode?(params) do
       total_rows = length(rows)
 
-      case AggregateOptions.max_client_rows() do
+      configured_limit =
+        Map.get(view_meta, :aggregate_max_client_rows, AggregateOptions.default_max_client_rows())
+
+      case AggregateOptions.max_client_rows(configured_limit) do
         :infinity ->
           {rows,
            Map.merge(view_meta, %{

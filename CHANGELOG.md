@@ -2,8 +2,16 @@
 CHANGES
 =======
 
-V NEXT
+V 0.4.10
 --------
+
+- Removed residual whitelist-based runtime atom creation; allowed string keys
+  now resolve directly to their pre-existing atom values.
+- Aggregate client-row limits can now be supplied per view through
+  `:aggregate_max_client_rows` metadata instead of library-global application
+  configuration.
+- Updated the coordinated package baseline to Selecto `0.4.9`.
+- Bump package version to `0.4.10`.
 
 V 0.4.9
 --------

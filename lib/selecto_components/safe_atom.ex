@@ -308,15 +308,7 @@ defmodule SelectoComponents.SafeAtom do
   def to_atom_if_allowed("", _allowed, default), do: default
 
   def to_atom_if_allowed(value, allowed, default) when is_binary(value) do
-    # Convert allowed atoms to strings for comparison
-    allowed_strings = Enum.map(allowed, &Atom.to_string/1)
-
-    if value in allowed_strings do
-      # Safe to convert because we verified it's in the whitelist
-      String.to_atom(value)
-    else
-      default
-    end
+    Enum.find(allowed, default, &(Atom.to_string(&1) == value))
   end
 
   @doc """
@@ -331,12 +323,18 @@ defmodule SelectoComponents.SafeAtom do
   """
   @spec atomize_keys(map(), [atom()]) :: map()
   def atomize_keys(map, allowed_keys) when is_map(map) do
-    allowed_strings = Enum.map(allowed_keys, &Atom.to_string/1)
+    allowed_by_name = Map.new(allowed_keys, &{Atom.to_string(&1), &1})
 
-    map
-    |> Enum.filter(fn {k, _v} -> is_binary(k) and k in allowed_strings end)
-    |> Enum.map(fn {k, v} -> {String.to_atom(k), v} end)
-    |> Map.new()
+    Enum.reduce(map, %{}, fn
+      {key, value}, acc when is_binary(key) ->
+        case Map.fetch(allowed_by_name, key) do
+          {:ok, atom_key} -> Map.put(acc, atom_key, value)
+          :error -> acc
+        end
+
+      _entry, acc ->
+        acc
+    end)
   end
 
   @doc """

@@ -13,16 +13,9 @@ defmodule SelectoComponents.Views.Aggregate.Options do
   def grid_color_scale_modes, do: @grid_color_scale_modes
   def default_grid_color_scale_mode, do: @default_grid_color_scale_mode
 
-  def max_client_rows do
-    configured =
-      Application.get_env(
-        :selecto_components,
-        :aggregate_max_client_rows,
-        @default_max_client_rows
-      )
-
-    normalize_max_client_rows(configured)
-  end
+  @doc "Normalizes an explicit per-view aggregate row limit."
+  def max_client_rows(configured \\ @default_max_client_rows),
+    do: normalize_max_client_rows(configured)
 
   def normalize_max_client_rows(:infinity), do: :infinity
 
