@@ -71,6 +71,51 @@ defmodule SelectoComponents.Actions do
   end
 
   @doc """
+  Returns the inputs that are active for the current action form values.
+
+  Base action inputs are followed by inputs from the first variant whose
+  `when` conditions match. Variant inputs replace base definitions with the
+  same id. The returned variant id is `nil` when no variant matches.
+
+  This is a UI projection only; the host action planner remains authoritative
+  for variant selection and validation during preview and apply.
+  """
+  @spec effective_inputs(map(), map()) :: {[map()], String.t() | nil}
+  def effective_inputs(action, current_inputs \\ %{})
+
+  def effective_inputs(action, current_inputs) when is_map(action) do
+    base_inputs = action_inputs(action)
+
+    variant =
+      action
+      |> action_variants()
+      |> Enum.find(&variant_matches?(&1, current_inputs))
+
+    variant_inputs = if variant, do: map_value(variant, :inputs, []), else: []
+
+    inputs =
+      (base_inputs ++ List.wrap(variant_inputs))
+      |> Enum.reduce([], fn input, accumulated ->
+        id = input |> map_value(:id) |> normalize_id()
+
+        accumulated
+        |> Enum.reject(fn existing ->
+          existing |> map_value(:id) |> normalize_id() == id
+        end)
+        |> Kernel.++([input])
+      end)
+
+    variant_id =
+      if variant do
+        variant |> map_value(:id) |> normalize_optional_id()
+      end
+
+    {inputs, variant_id}
+  end
+
+  def effective_inputs(_action, _current_inputs), do: {[], nil}
+
+  @doc """
   Merges a decision extracted from an action preview/apply result.
 
   Successful preview/apply payloads usually carry `capability_decision`; errors
@@ -700,6 +745,24 @@ defmodule SelectoComponents.Actions do
   end
 
   defp normalize_variant_entries(_variants), do: []
+
+  defp variant_matches?(variant, current_inputs) do
+    conditions = variant |> map_value(:when, %{}) |> map_or_empty()
+
+    map_size(conditions) > 0 and
+      Enum.all?(conditions, fn {field, expected} ->
+        actual = map_value(current_inputs, normalize_id(field))
+        condition_value_equal?(actual, expected)
+      end)
+  end
+
+  defp condition_value_equal?(actual, expected) when is_boolean(expected),
+    do: truthy?(actual) == expected
+
+  defp condition_value_equal?(actual, expected) when is_atom(expected),
+    do: condition_value_equal?(actual, Atom.to_string(expected))
+
+  defp condition_value_equal?(actual, expected), do: to_string(actual) == to_string(expected)
 
   defp action_input_template(action) do
     action

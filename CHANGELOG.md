@@ -2,6 +2,20 @@
 CHANGES
 =======
 
+V 0.4.11
+--------
+
+- Added variant-aware domain action forms that show only the active variant's
+  fields while preserving planner-owned conditional validation.
+- Added structured collection editors with add, remove, reorder, nested field
+  validation, enum and boolean controls, and stable client ordering metadata.
+- Removed redundant confirmation steps for actions that already require an
+  explicit Apply submission and moved authorization/read-only explanations to
+  the top of unavailable forms.
+- Fixed action-result returning validation and preserved fail-closed behavior
+  for unsupported collection execution paths.
+- Bump package version to `0.4.11`.
+
 V 0.4.10
 --------
 

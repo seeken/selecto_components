@@ -19,7 +19,7 @@ defmodule SelectoComponents.EnhancedTable.BulkActionsTest do
     assert html =~ ~s(data-bulk-action-scope="bulk")
     assert html =~ ~s(data-bulk-action-confirmation)
     assert html =~ ~s(data-bulk-action-destructive)
-    assert html =~ ~s(data-confirm="Archive selected rows?")
+    refute html =~ ~s(data-confirm="Archive selected rows?")
     assert html =~ "sc-bulk-action-destructive"
     assert html =~ "Archive selected"
     assert html =~ ~s(id="bulk-actions-menu")

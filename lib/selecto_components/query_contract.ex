@@ -428,6 +428,7 @@ defmodule SelectoComponents.QueryContract do
   def json_safe(%NaiveDateTime{} = value), do: NaiveDateTime.to_iso8601(value)
   def json_safe(%Date{} = value), do: Date.to_iso8601(value)
   def json_safe(%Time{} = value), do: Time.to_iso8601(value)
+  def json_safe(value) when is_struct(value), do: value |> Map.from_struct() |> json_safe()
 
   def json_safe(value) when is_map(value) do
     Enum.reduce(value, %{}, fn {key, value}, acc ->

@@ -36,9 +36,17 @@ defmodule SelectoComponents.Modal.ActionFormModal do
   def render(assigns) do
     action = normalize_action(Map.get(assigns, :action, %{}))
     target = normalize_target(assigns)
-    inputs = Map.get(action, :inputs, Map.get(action, "inputs", []))
     form_inputs = Map.get(assigns, :form_inputs, %{})
-    request_inputs = form_inputs |> merge_default_inputs(action) |> normalize_inputs(inputs)
+
+    base_request_inputs = merge_default_inputs(form_inputs, action)
+    {inputs, _active_variant} = Actions.effective_inputs(action, base_request_inputs)
+
+    request_inputs =
+      base_request_inputs
+      |> merge_input_defaults(inputs)
+      |> normalize_inputs(inputs)
+
+    {inputs, active_variant} = Actions.effective_inputs(action, request_inputs)
 
     request_template =
       Actions.request_template(action,
@@ -57,6 +65,7 @@ defmodule SelectoComponents.Modal.ActionFormModal do
       |> assign(:target, target)
       |> assign(:request_template, request_template)
       |> assign(:inputs, inputs)
+      |> assign(:active_variant, active_variant)
       |> assign(:form_inputs, request_inputs)
       |> assign(
         :confirmation,
@@ -72,6 +81,7 @@ defmodule SelectoComponents.Modal.ActionFormModal do
       |> assign(:controls_disabled?, controls_disabled?)
       |> assign(:disabled_reason, disabled_reason(action))
       |> assign(:action_status, action_status(disabled?, applied?))
+      |> assign(:form_valid?, required_inputs_valid?(request_inputs, inputs))
       |> assign(:result_summary, result_summary(Map.get(assigns, :last_result)))
       |> assign(:reload_summary, reload_summary(Map.get(assigns, :last_result)))
       |> assign(:error_details, Map.get(assigns, :last_error_details))
@@ -88,6 +98,17 @@ defmodule SelectoComponents.Modal.ActionFormModal do
       aria-busy={not is_nil(@submitting)}
       class="space-y-4"
     >
+      <div
+        :if={@disabled?}
+        data-selecto-action-form-unavailable
+        role="alert"
+        class="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
+      >
+        <div class="font-semibold">This action is unavailable for your current access.</div>
+        <p class="mt-1">{@disabled_reason || "This action is not available for the selected target."}</p>
+        <p class="mt-1 text-xs text-amber-800">The form is read-only until the action becomes available.</p>
+      </div>
+
       <div class="rounded border border-slate-200 bg-slate-50 p-3 text-sm">
         <div class="flex flex-wrap items-center gap-2">
           <span class="font-semibold text-slate-900">{Map.get(@action, :id) || Map.get(@action, "id")}</span>
@@ -121,9 +142,22 @@ defmodule SelectoComponents.Modal.ActionFormModal do
         class="space-y-4"
       >
         <div data-selecto-action-form-inputs class="space-y-3">
-          <h4 class="text-sm font-semibold text-slate-900">Inputs</h4>
+          <h4 class="text-sm font-semibold text-slate-900">
+            Inputs{if @controls_disabled?, do: " (read-only)", else: ""}
+          </h4>
+          <p :if={@active_variant} data-selecto-action-form-variant={@active_variant} class="text-xs text-slate-500">
+            Variant: <span class="font-medium text-slate-700">{@active_variant}</span>
+          </p>
           <p :if={@inputs == []} class="text-sm text-slate-500">This action has no additional inputs.</p>
-          <label :for={input <- @inputs} class="block">
+          <div :for={input <- @inputs} class="block">
+            <.collection_input
+              :if={collection_input?(input)}
+              input={input}
+              items={collection_input_items(input, @form_inputs)}
+              controls_disabled?={@controls_disabled?}
+              myself={@myself}
+            />
+            <label :if={!collection_input?(input)} class="block">
             <span class="text-sm font-medium text-slate-700">
               {Map.get(input, "label") || humanize(Map.get(input, "id"))}
               <span :if={truthy?(Map.get(input, "required"))} class="text-rose-600">*</span>
@@ -166,7 +200,8 @@ defmodule SelectoComponents.Modal.ActionFormModal do
               disabled={@controls_disabled?}
               class={input_class(input)}
             />
-          </label>
+            </label>
+          </div>
         </div>
 
         <label :if={truthy?(Map.get(@confirmation, "required"))} class="flex items-start gap-2 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
@@ -194,10 +229,6 @@ defmodule SelectoComponents.Modal.ActionFormModal do
               <dd class="mt-1 font-mono text-rose-950">{item.value}</dd>
             </div>
           </dl>
-        </div>
-
-        <div :if={@disabled?} data-selecto-action-form-disabled class="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          {@disabled_reason || "This action is not available for the selected target."}
         </div>
 
         <div :if={@last_result} data-selecto-action-form-result class="rounded border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
@@ -252,8 +283,8 @@ defmodule SelectoComponents.Modal.ActionFormModal do
             name="intent"
             value="apply"
             data-selecto-action-form-submit="apply"
-            class={action_submit_class(:apply, apply_disabled?(@confirmation, @confirmed, @submitting, @applied?, @disabled?))}
-            disabled={apply_disabled?(@confirmation, @confirmed, @submitting, @applied?, @disabled?)}
+            class={action_submit_class(:apply, apply_disabled?(@confirmation, @confirmed, @submitting, @applied?, @disabled?, @form_valid?))}
+            disabled={apply_disabled?(@confirmation, @confirmed, @submitting, @applied?, @disabled?, @form_valid?)}
           >
             Apply
           </button>
@@ -263,9 +294,147 @@ defmodule SelectoComponents.Modal.ActionFormModal do
     """
   end
 
+  defp collection_input(assigns) do
+    assigns =
+      assigns
+      |> assign(:input_id, Map.get(assigns.input, "id"))
+      |> assign(:item_inputs, collection_item_inputs(assigns.input))
+      |> assign(:min_items, collection_min_items(assigns.input))
+
+    ~H"""
+    <fieldset
+      data-selecto-action-form-collection={@input_id}
+      class="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3"
+      disabled={@controls_disabled?}
+    >
+      <div class="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <legend class="text-sm font-medium text-slate-700">
+            {Map.get(@input, "label") || humanize(@input_id)}
+            <span :if={input_required?(@input)} class="text-rose-600">*</span>
+          </legend>
+          <p class="text-xs text-slate-500">
+            {collection_help_text(@input, @min_items)}
+          </p>
+        </div>
+        <button
+          type="button"
+          phx-click="add_action_collection_item"
+          phx-target={@myself}
+          phx-value-input-id={@input_id}
+          data-selecto-action-form-collection-add={@input_id}
+          class="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+        >
+          Add item
+        </button>
+      </div>
+
+      <p :if={@items == []} class="rounded border border-dashed border-slate-300 bg-white p-3 text-sm text-slate-500">
+        No items added.
+      </p>
+
+      <div
+        :for={{item, index} <- Enum.with_index(@items)}
+        data-selecto-action-form-collection-item={index}
+        class="space-y-3 rounded border border-slate-200 bg-white p-3"
+      >
+        <input type="hidden" name={collection_item_name(@input_id, index, "op")} value={Map.get(item, "op", "add")} />
+        <input type="hidden" name={collection_item_name(@input_id, index, "client_id")} value={Map.get(item, "client_id")} />
+        <input type="hidden" name={collection_item_name(@input_id, index, collection_order_field(@input))} value={index + 1} />
+
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-xs font-semibold uppercase tracking-wide text-slate-500">Item {index + 1}</span>
+          <div class="flex gap-1">
+            <button
+              type="button"
+              phx-click="move_action_collection_item"
+              phx-target={@myself}
+              phx-value-input-id={@input_id}
+              phx-value-index={index}
+              phx-value-direction="up"
+              disabled={index == 0}
+              class="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-40"
+            >
+              Up
+            </button>
+            <button
+              type="button"
+              phx-click="move_action_collection_item"
+              phx-target={@myself}
+              phx-value-input-id={@input_id}
+              phx-value-index={index}
+              phx-value-direction="down"
+              disabled={index == length(@items) - 1}
+              class="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-40"
+            >
+              Down
+            </button>
+            <button
+              type="button"
+              phx-click="remove_action_collection_item"
+              phx-target={@myself}
+              phx-value-input-id={@input_id}
+              phx-value-index={index}
+              class="rounded border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+
+        <label :for={item_input <- @item_inputs} class="block">
+          <span class="text-sm font-medium text-slate-700">
+            {Map.get(item_input, "label") || humanize(Map.get(item_input, "id"))}
+            <span :if={input_required?(item_input)} class="text-rose-600">*</span>
+          </span>
+          <select
+            :if={select_input?(item_input)}
+            name={collection_item_name(@input_id, index, Map.get(item_input, "id"))}
+            required={required_html_input?(item_input)}
+            class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          >
+            <option
+              :for={option <- input_options(item_input)}
+              value={option_value(option)}
+              selected={option_value(option) == to_string(collection_item_value(item, item_input))}
+            >
+              {option_label(option)}
+            </option>
+          </select>
+          <textarea
+            :if={textarea_input?(item_input)}
+            name={collection_item_name(@input_id, index, Map.get(item_input, "id"))}
+            rows={input_rows(item_input)}
+            required={required_html_input?(item_input)}
+            class="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          ><%= collection_item_value(item, item_input) %></textarea>
+          <span :if={!select_input?(item_input) && !textarea_input?(item_input) && input_type(item_input) == "checkbox"}>
+            <input type="hidden" name={collection_item_name(@input_id, index, Map.get(item_input, "id"))} value="false" />
+            <input
+              type="checkbox"
+              name={collection_item_name(@input_id, index, Map.get(item_input, "id"))}
+              value="true"
+              checked={truthy?(collection_item_value(item, item_input))}
+              class={input_class(item_input)}
+            />
+          </span>
+          <input
+            :if={!select_input?(item_input) && !textarea_input?(item_input) && input_type(item_input) != "checkbox"}
+            type={input_type(item_input)}
+            name={collection_item_name(@input_id, index, Map.get(item_input, "id"))}
+            value={collection_item_value(item, item_input)}
+            required={required_html_input?(item_input)}
+            class={input_class(item_input)}
+          />
+        </label>
+      </div>
+    </fieldset>
+    """
+  end
+
   @impl true
   def handle_event("change_action_form", params, socket) do
-    input_defs = action_input_defs(socket)
+    input_defs = all_action_input_defs(socket)
 
     form_inputs =
       socket.assigns
@@ -282,6 +451,31 @@ defmodule SelectoComponents.Modal.ActionFormModal do
        confirmed: truthy?(Map.get(params, "confirmed")),
        last_error: nil
      )}
+  end
+
+  def handle_event("add_action_collection_item", %{"input-id" => input_id}, socket) do
+    {:noreply,
+     update_collection_items(socket, input_id, &(&1 ++ [new_collection_item(socket, input_id)]))}
+  end
+
+  def handle_event(
+        "remove_action_collection_item",
+        %{"input-id" => input_id, "index" => index},
+        socket
+      ) do
+    {:noreply, update_collection_items(socket, input_id, &List.delete_at(&1, parse_index(index)))}
+  end
+
+  def handle_event(
+        "move_action_collection_item",
+        %{"input-id" => input_id, "index" => index, "direction" => direction},
+        socket
+      ) do
+    index = parse_index(index)
+    destination = if direction == "up", do: index - 1, else: index + 1
+
+    {:noreply,
+     update_collection_items(socket, input_id, &move_collection_item(&1, index, destination))}
   end
 
   def handle_event("reset_action_form", _params, socket) do
@@ -302,13 +496,16 @@ defmodule SelectoComponents.Modal.ActionFormModal do
     intent = normalize_intent(Map.get(params, "intent"))
     action = normalize_action(socket.assigns.action)
     target = normalize_target(socket.assigns)
-    input_defs = action_input_defs(socket, action)
+    all_input_defs = all_action_input_defs(socket, action)
 
-    inputs =
+    normalized_inputs =
       socket.assigns
       |> Map.get(:form_inputs, %{})
       |> merge_submit_inputs(Map.get(params, "inputs", %{}))
-      |> normalize_inputs(input_defs)
+      |> normalize_inputs(all_input_defs)
+
+    {input_defs, _active_variant} = Actions.effective_inputs(action, normalized_inputs)
+    inputs = only_active_inputs(normalized_inputs, input_defs, all_input_defs)
 
     confirmed = truthy?(Map.get(params, "confirmed"))
 
@@ -375,9 +572,7 @@ defmodule SelectoComponents.Modal.ActionFormModal do
 
   defp normalize_action(_action), do: %{}
 
-  defp action_input_defs(socket, action \\ nil) do
-    action = action || normalize_action(Map.get(socket.assigns, :action, %{}))
-
+  defp action_input_defs(socket, action) do
     case Map.get(socket.assigns, :inputs) do
       inputs when is_list(inputs) and inputs != [] ->
         SelectoComponents.QueryContract.json_safe(inputs)
@@ -385,6 +580,66 @@ defmodule SelectoComponents.Modal.ActionFormModal do
       _inputs ->
         Map.get(action, "inputs", [])
     end
+  end
+
+  defp all_action_input_defs(socket, action \\ nil) do
+    action = action || normalize_action(Map.get(socket.assigns, :action, %{}))
+
+    base_inputs = action_input_defs(socket, action)
+
+    variant_inputs =
+      action
+      |> Map.get("variants", [])
+      |> List.wrap()
+      |> Enum.flat_map(&(Map.get(&1, "inputs", []) |> List.wrap()))
+
+    merge_input_definitions(base_inputs, variant_inputs)
+  end
+
+  defp merge_input_definitions(base_inputs, extra_inputs) do
+    (List.wrap(base_inputs) ++ List.wrap(extra_inputs))
+    |> Enum.reduce([], fn input, accumulated ->
+      id = Map.get(input, "id")
+
+      accumulated
+      |> Enum.reject(&(Map.get(&1, "id") == id))
+      |> Kernel.++([input])
+    end)
+  end
+
+  defp merge_input_defaults(inputs, input_defs) do
+    Enum.reduce(List.wrap(input_defs), map_or_empty(inputs), fn input, accumulated ->
+      id = Map.get(input, "id")
+
+      cond do
+        is_nil(id) or Map.has_key?(accumulated, id) ->
+          accumulated
+
+        Map.has_key?(input, "default") ->
+          Map.put(accumulated, id, Map.get(input, "default"))
+
+        collection_input?(input) ->
+          Map.put(accumulated, id, [])
+
+        Map.get(input, "type") == "boolean" ->
+          Map.put(accumulated, id, false)
+
+        true ->
+          accumulated
+      end
+    end)
+  end
+
+  defp only_active_inputs(inputs, active_input_defs, all_input_defs) do
+    active_ids = active_input_defs |> List.wrap() |> Enum.map(&Map.get(&1, "id")) |> MapSet.new()
+    declared_ids = all_input_defs |> List.wrap() |> Enum.map(&Map.get(&1, "id")) |> MapSet.new()
+
+    inputs
+    |> map_or_empty()
+    |> Enum.filter(fn {id, _value} ->
+      MapSet.member?(active_ids, id) or not MapSet.member?(declared_ids, id)
+    end)
+    |> Map.new()
   end
 
   defp normalize_intent("apply"), do: "apply"
@@ -509,6 +764,155 @@ defmodule SelectoComponents.Modal.ActionFormModal do
   defp map_or_empty(value) when is_map(value), do: value
   defp map_or_empty(_value), do: %{}
 
+  defp collection_input?(input), do: Map.get(input, "type") == "collection"
+
+  defp collection_item_inputs(input) do
+    input
+    |> Map.get("item", get_in(input, ["raw", "item"]) || [])
+    |> case do
+      inputs when is_list(inputs) ->
+        inputs
+
+      inputs when is_map(inputs) ->
+        Enum.map(inputs, fn {id, definition} ->
+          definition
+          |> map_or_empty()
+          |> SelectoComponents.QueryContract.json_safe()
+          |> Map.put_new("id", to_string(id))
+        end)
+
+      _other ->
+        []
+    end
+  end
+
+  defp collection_min_items(input) do
+    Map.get(input, "min_items") || get_in(input, ["raw", "min_items"]) ||
+      if(input_required?(input), do: 1, else: 0)
+  end
+
+  defp collection_help_text(input, min_items) do
+    Map.get(input, "help") || Map.get(input, "description") ||
+      case min_items do
+        count when is_integer(count) and count > 0 ->
+          "Add at least #{count} #{if count == 1, do: "item", else: "items"}."
+
+        _count ->
+          "Add, remove, or reorder items for this action."
+      end
+  end
+
+  defp collection_order_field(input) do
+    get_in(input, ["order", "field"]) || get_in(input, ["raw", "order", "field"]) ||
+      "position"
+  end
+
+  defp collection_item_name(collection_id, index, field),
+    do: "inputs[#{collection_id}][#{index}][#{field}]"
+
+  defp collection_item_value(item, input) do
+    id = Map.get(input, "id")
+
+    cond do
+      Map.has_key?(item, id) -> Map.get(item, id)
+      Map.has_key?(input, "default") -> Map.get(input, "default")
+      Map.get(input, "type") == "boolean" -> false
+      true -> ""
+    end
+  end
+
+  defp collection_input_items(input, form_inputs) do
+    form_inputs
+    |> map_or_empty()
+    |> Map.get(Map.get(input, "id"), [])
+    |> normalize_collection_items(input)
+  end
+
+  defp update_collection_items(socket, input_id, update_fun) do
+    input =
+      socket
+      |> all_action_input_defs()
+      |> Enum.find(&(Map.get(&1, "id") == input_id and collection_input?(&1)))
+
+    if input do
+      form_inputs = Map.get(socket.assigns, :form_inputs, %{}) |> map_or_empty()
+      items = form_inputs |> Map.get(input_id, []) |> normalize_collection_items(input)
+
+      assign(socket,
+        form_inputs: Map.put(form_inputs, input_id, update_fun.(items)),
+        last_error: nil
+      )
+    else
+      socket
+    end
+  end
+
+  defp new_collection_item(socket, input_id) do
+    input =
+      socket
+      |> all_action_input_defs()
+      |> Enum.find(&(Map.get(&1, "id") == input_id and collection_input?(&1)))
+
+    defaults =
+      input
+      |> collection_item_inputs()
+      |> Enum.reduce(%{}, fn item_input, item ->
+        id = Map.get(item_input, "id")
+
+        value =
+          cond do
+            Map.has_key?(item_input, "default") ->
+              Map.get(item_input, "default")
+
+            select_input?(item_input) ->
+              item_input |> input_options() |> List.first() |> option_value()
+
+            Map.get(item_input, "type") == "boolean" ->
+              false
+
+            true ->
+              ""
+          end
+
+        Map.put(item, id, value)
+      end)
+
+    defaults
+    |> Map.put("op", "add")
+    |> Map.put("client_id", "selecto-item-#{System.unique_integer([:positive, :monotonic])}")
+  end
+
+  defp move_collection_item(items, from, destination)
+       when is_integer(from) and is_integer(destination) do
+    if items != [] and from >= 0 and from < length(items) and destination >= 0 and
+         destination < length(items) do
+      item = Enum.at(items, from)
+
+      items
+      |> List.delete_at(from)
+      |> List.insert_at(destination, item)
+    else
+      items
+    end
+  end
+
+  defp move_collection_item(items, _from, _destination), do: items
+
+  defp parse_index(index) when is_integer(index), do: index
+
+  defp parse_index(index) do
+    case Integer.parse(to_string(index)) do
+      {value, ""} -> value
+      _other -> 1_000_000
+    end
+  end
+
+  defp normalize_input_value(value, %{"type" => "collection"} = input),
+    do: normalize_collection_items(value, input)
+
+  defp normalize_input_value(value, %{"type" => "boolean"}) when is_list(value),
+    do: value |> List.last() |> truthy?()
+
   defp normalize_input_value(nil, %{"type" => "boolean"}), do: false
   defp normalize_input_value("true", %{"type" => "boolean"}), do: true
   defp normalize_input_value("false", %{"type" => "boolean"}), do: false
@@ -520,6 +924,46 @@ defmodule SelectoComponents.Modal.ActionFormModal do
     do: normalize_utc_datetime(value)
 
   defp normalize_input_value(value, _input), do: value
+
+  defp normalize_collection_items(nil, _input), do: []
+
+  defp normalize_collection_items(items, input) when is_map(items) do
+    items
+    |> Enum.reject(fn {key, _value} -> String.starts_with?(to_string(key), "_unused_") end)
+    |> Enum.sort_by(fn {key, _value} -> parse_index(key) end)
+    |> Enum.map(&elem(&1, 1))
+    |> normalize_collection_items(input)
+  end
+
+  defp normalize_collection_items(items, input) when is_list(items) do
+    item_inputs = collection_item_inputs(input)
+    item_ids = item_inputs |> Enum.map(&Map.get(&1, "id")) |> MapSet.new()
+
+    Enum.map(items, fn item ->
+      item = item |> map_or_empty() |> SelectoComponents.QueryContract.json_safe()
+
+      normalized_fields =
+        Enum.reduce(item_inputs, %{}, fn item_input, normalized ->
+          id = Map.get(item_input, "id")
+          value = normalize_input_value(Map.get(item, id), item_input)
+
+          if value == :__selecto_omit_input__ do
+            normalized
+          else
+            Map.put(normalized, id, value)
+          end
+        end)
+
+      item
+      |> Enum.reject(fn {key, _value} ->
+        String.starts_with?(to_string(key), "_unused_") or MapSet.member?(item_ids, key)
+      end)
+      |> Map.new()
+      |> Map.merge(normalized_fields)
+    end)
+  end
+
+  defp normalize_collection_items(_items, _input), do: []
 
   defp default_or_omit_input(input) do
     cond do
@@ -674,10 +1118,11 @@ defmodule SelectoComponents.Modal.ActionFormModal do
   end
 
   defp validate_required_inputs(inputs, input_defs) do
-    missing =
+    missing_inputs =
       input_defs
       |> List.wrap()
       |> Enum.filter(&input_required?/1)
+      |> Enum.reject(&collection_input?/1)
       |> Enum.filter(fn input ->
         inputs
         |> Map.get(Map.get(input, "id"))
@@ -685,11 +1130,49 @@ defmodule SelectoComponents.Modal.ActionFormModal do
       end)
       |> Enum.map(&input_label/1)
 
-    case missing do
+    collection_errors =
+      input_defs
+      |> List.wrap()
+      |> Enum.filter(&collection_input?/1)
+      |> Enum.flat_map(&validate_collection_input(inputs, &1))
+
+    case missing_inputs ++ collection_errors do
       [] -> :ok
       labels -> {:error, "Required inputs missing: #{Enum.join(labels, ", ")}."}
     end
   end
+
+  defp validate_collection_input(inputs, input) do
+    items = collection_input_items(input, inputs)
+    min_items = collection_min_items(input)
+
+    minimum_error =
+      if is_integer(min_items) and length(items) < min_items do
+        ["#{input_label(input)} (at least #{min_items})"]
+      else
+        []
+      end
+
+    item_errors =
+      items
+      |> Enum.with_index(1)
+      |> Enum.flat_map(fn {item, index} ->
+        input
+        |> collection_item_inputs()
+        |> Enum.filter(&input_required?/1)
+        |> Enum.filter(fn item_input ->
+          item |> Map.get(Map.get(item_input, "id")) |> blank_input_value?()
+        end)
+        |> Enum.map(fn item_input ->
+          "#{input_label(input)} item #{index} #{input_label(item_input)}"
+        end)
+      end)
+
+    minimum_error ++ item_errors
+  end
+
+  defp required_inputs_valid?(inputs, input_defs),
+    do: validate_required_inputs(inputs, input_defs) == :ok
 
   defp blank_input_value?(value) when value in [nil, ""], do: true
   defp blank_input_value?(value) when is_binary(value), do: String.trim(value) == ""
@@ -710,8 +1193,8 @@ defmodule SelectoComponents.Modal.ActionFormModal do
   defp truthy?(value) when value in [true, "true", "1", "on", 1, :yes], do: true
   defp truthy?(_value), do: false
 
-  defp apply_disabled?(confirmation, confirmed, submitting, applied?, disabled?) do
-    disabled? or applied? or submitting == "apply" or
+  defp apply_disabled?(confirmation, confirmed, submitting, applied?, disabled?, form_valid?) do
+    disabled? or applied? or not form_valid? or submitting == "apply" or
       (truthy?(Map.get(confirmation, "required")) and not confirmed)
   end
 

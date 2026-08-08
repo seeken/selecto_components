@@ -132,7 +132,7 @@ defmodule SelectoComponents.EnhancedTable.BulkActions do
         }
         disabled={@action.disabled?}
         phx-click={!@action.disabled? && execute_action_click(@menu_id, @action.id, @myself)}
-        data-confirm={if !@action.disabled? && @action.requires_confirmation?, do: @action.confirmation_message}
+        data-confirm={browser_confirmation(@action)}
         data-bulk-action-id={@action.id}
         data-bulk-action-source={Map.get(@action, :source)}
         data-bulk-action-scope={Map.get(@action, :scope)}
@@ -430,6 +430,17 @@ defmodule SelectoComponents.EnhancedTable.BulkActions do
   end
 
   defp generated_action_form_menu_item(_id, _config), do: nil
+
+  # Generated action forms own confirmation inside the form itself. A browser
+  # confirm before opening the form duplicates that explicit Apply safeguard.
+  defp browser_confirmation(%{source: source})
+       when source in [:generated_action_form, :generated_bulk_action_form],
+       do: nil
+
+  defp browser_confirmation(%{disabled?: false, requires_confirmation?: true} = action),
+    do: action.confirmation_message
+
+  defp browser_confirmation(_action), do: nil
 
   defp normalize_action_item(action) when is_map(action) do
     %{

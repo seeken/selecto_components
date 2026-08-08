@@ -601,9 +601,11 @@ defmodule SelectoComponents.Modal.ActionFormModalTest do
         confirmed: true
       })
 
-    assert html =~ ~s(data-selecto-action-form-disabled)
+    assert html =~ ~s(data-selecto-action-form-unavailable)
     assert html =~ ~s(data-action-status="disabled")
     assert html =~ "Action precondition failed for state."
+    assert html =~ "This action is unavailable for your current access."
+    assert html =~ "Inputs (read-only)"
 
     assert html =~
              ~r/data-selecto-action-form-input="note"[\s\S]*name="inputs\[note\]"[\s\S]*disabled/
@@ -921,6 +923,124 @@ defmodule SelectoComponents.Modal.ActionFormModalTest do
     refute html =~ ~s(value="2026-05-16T21:45:00Z")
   end
 
+  test "render selects a variant and exposes a structured collection editor" do
+    html =
+      render_component(ActionFormModal, %{
+        id: "check-in-form",
+        action: variant_action(),
+        target: %{id: 42},
+        record: %{"id" => 42},
+        form_inputs: %{"documents_complete" => false}
+      })
+
+    assert html =~ ~s(data-selecto-action-form-variant="missing_documents")
+    assert html =~ ~s(data-selecto-action-form-input="follow_up_note")
+    assert html =~ ~s(data-selecto-action-form-collection="missing_documents")
+    assert html =~ ~s(data-selecto-action-form-collection-add="missing_documents")
+    assert html =~ "Add at least 1 item."
+    refute html =~ ~s(data-selecto-action-form-input="welcome_packet_delivered")
+    assert html =~ ~r/data-selecto-action-form-submit="apply"[\s\S]*disabled/
+  end
+
+  test "collection events add and reorder defaulted items" do
+    socket = socket(variant_action(), %{id: 42})
+
+    assert {:noreply, socket} =
+             ActionFormModal.handle_event(
+               "add_action_collection_item",
+               %{"input-id" => "missing_documents"},
+               socket
+             )
+
+    assert [first] = socket.assigns.form_inputs["missing_documents"]
+    assert first["op"] == "add"
+    assert first["client_id"] =~ "selecto-item-"
+    assert first["document_type"] == "medical_form"
+    assert first["resolved"] == false
+
+    assert {:noreply, socket} =
+             ActionFormModal.handle_event(
+               "add_action_collection_item",
+               %{"input-id" => "missing_documents"},
+               socket
+             )
+
+    [first, second] = socket.assigns.form_inputs["missing_documents"]
+
+    assert {:noreply, socket} =
+             ActionFormModal.handle_event(
+               "move_action_collection_item",
+               %{"input-id" => "missing_documents", "index" => "1", "direction" => "up"},
+               socket
+             )
+
+    assert Enum.map(socket.assigns.form_inputs["missing_documents"], & &1["client_id"]) == [
+             second["client_id"],
+             first["client_id"]
+           ]
+  end
+
+  test "submit normalizes active collection variant and omits inactive variant fields" do
+    params = %{
+      "intent" => "preview",
+      "inputs" => %{
+        "documents_complete" => "false",
+        "follow_up_note" => "Call family",
+        "welcome_packet_delivered" => "true",
+        "missing_documents" => %{
+          "0" => %{
+            "op" => "add",
+            "client_id" => "tmp-1",
+            "position" => "1",
+            "document_type" => "waiver",
+            "note" => "Needs signature",
+            "resolved" => ["false", "true"]
+          }
+        }
+      }
+    }
+
+    assert {:noreply, updated_socket} =
+             ActionFormModal.handle_event(
+               "submit_action_form",
+               params,
+               socket(variant_action(), %{id: 42})
+             )
+
+    assert_receive {:selecto_action_form_submit, payload}
+    assert payload.inputs["documents_complete"] == false
+    assert payload.inputs["follow_up_note"] == "Call family"
+    refute Map.has_key?(payload.inputs, "welcome_packet_delivered")
+
+    assert [item] = payload.inputs["missing_documents"]
+    assert item["op"] == "add"
+    assert item["client_id"] == "tmp-1"
+    assert item["position"] == "1"
+    assert item["document_type"] == "waiver"
+    assert item["resolved"] == true
+    assert updated_socket.assigns.last_error == nil
+  end
+
+  test "submit blocks an incomplete collection variant" do
+    assert {:noreply, updated_socket} =
+             ActionFormModal.handle_event(
+               "submit_action_form",
+               %{
+                 "intent" => "preview",
+                 "inputs" => %{
+                   "documents_complete" => "false",
+                   "follow_up_note" => "",
+                   "missing_documents" => %{}
+                 }
+               },
+               socket(variant_action(), %{id: 42})
+             )
+
+    assert updated_socket.assigns.last_error =~ "Follow-up note"
+    assert updated_socket.assigns.last_error =~ "Missing documents (at least 1)"
+    refute_received {:selecto_action_form_submit, _payload}
+  end
+
   defp socket(action, target) do
     %Phoenix.LiveView.Socket{
       assigns: %{
@@ -945,6 +1065,63 @@ defmodule SelectoComponents.Modal.ActionFormModalTest do
         "preview" => %{"href" => "/actions/archive/preview", "method" => "POST"},
         "apply" => %{"href" => "/actions/archive/apply", "method" => "POST"}
       }
+    }
+  end
+
+  defp variant_action do
+    %{
+      "id" => "check_in_camper",
+      "label" => "Check in camper",
+      "scope" => "row",
+      "operation" => "update",
+      "inputs" => [
+        %{"id" => "documents_complete", "type" => "boolean", "required" => true}
+      ],
+      "variants" => [
+        %{
+          "id" => "standard_check_in",
+          "when" => %{"documents_complete" => true},
+          "inputs" => [
+            %{
+              "id" => "welcome_packet_delivered",
+              "type" => "boolean",
+              "default" => true
+            }
+          ]
+        },
+        %{
+          "id" => "missing_documents",
+          "when" => %{"documents_complete" => false},
+          "inputs" => [
+            %{
+              "id" => "missing_documents",
+              "label" => "Missing documents",
+              "type" => "collection",
+              "required" => true,
+              "min_items" => 1,
+              "order" => %{"field" => "position"},
+              "item" => [
+                %{
+                  "id" => "document_type",
+                  "label" => "Document type",
+                  "type" => "enum",
+                  "required" => true,
+                  "values" => ["medical_form", "waiver", "payment"]
+                },
+                %{"id" => "note", "type" => "string"},
+                %{"id" => "resolved", "type" => "boolean", "default" => false}
+              ]
+            },
+            %{
+              "id" => "follow_up_note",
+              "label" => "Follow-up note",
+              "type" => "textarea",
+              "required" => true
+            }
+          ]
+        }
+      ],
+      "confirmation" => %{"required" => false}
     }
   end
 end

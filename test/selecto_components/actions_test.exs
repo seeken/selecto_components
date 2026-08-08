@@ -103,6 +103,38 @@ defmodule SelectoComponents.ActionsTest do
     assert action.reason == "Approval window is closed"
   end
 
+  test "effective_inputs selects the first matching variant and replaces duplicate definitions" do
+    action = %{
+      "inputs" => [
+        %{"id" => "documents_complete", "type" => "boolean"},
+        %{"id" => "note", "type" => "string", "label" => "Base note"}
+      ],
+      "variants" => [
+        %{
+          "id" => "complete",
+          "when" => %{"documents_complete" => true},
+          "inputs" => [%{"id" => "note", "type" => "string", "label" => "Completion note"}]
+        },
+        %{
+          "id" => "incomplete",
+          "when" => %{"documents_complete" => false},
+          "inputs" => [%{"id" => "follow_up_note", "type" => "textarea"}]
+        }
+      ]
+    }
+
+    assert {inputs, "complete"} =
+             Actions.effective_inputs(action, %{"documents_complete" => "true"})
+
+    assert Enum.map(inputs, & &1["id"]) == ["documents_complete", "note"]
+    assert Enum.find(inputs, &(&1["id"] == "note"))["label"] == "Completion note"
+
+    assert {inputs, "incomplete"} =
+             Actions.effective_inputs(action, %{"documents_complete" => false})
+
+    assert Enum.map(inputs, & &1["id"]) == ["documents_complete", "note", "follow_up_note"]
+  end
+
   test "uses host capability resolver decisions for action availability" do
     resolver = fn request ->
       assert %Selecto.Capabilities.Request{} = request

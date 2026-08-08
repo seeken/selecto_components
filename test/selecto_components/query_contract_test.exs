@@ -3,6 +3,10 @@ defmodule SelectoComponents.QueryContractTest do
 
   alias SelectoComponents.QueryContract
 
+  defmodule OpaqueValue do
+    defstruct [:word, positions: []]
+  end
+
   describe "build/1" do
     test "builds a query contract from an authored domain" do
       assert {:ok, contract, diagnostics} = QueryContract.build(domain())
@@ -100,6 +104,11 @@ defmodule SelectoComponents.QueryContractTest do
                "due_on" => "2026-05-14",
                "starts_at" => "18:56:38"
              }
+    end
+
+    test "normalizes adapter structs and nested tuples without treating them as enumerables" do
+      assert QueryContract.json_safe(%OpaqueValue{word: "action", positions: [{2, nil}]}) ==
+               %{"word" => "action", "positions" => [[2, nil]]}
     end
   end
 
