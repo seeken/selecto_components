@@ -44,6 +44,29 @@ defmodule SelectoComponents.Form.PromotedFilterEditorTest do
     assert html =~ ~s(<option value="phrase" selected>)
   end
 
+  test "renders a finite domain vocabulary as a select" do
+    html =
+      render_component(&PromotedFilterEditor.editor/1, %{
+        theme: Theme.default_theme(:light),
+        filter: %{
+          uuid: "attention",
+          comp: "=",
+          render_kind: :standard,
+          field_conf: %{
+            type: :string,
+            options: ["Ready to reserve", "Needs attention", "Retired"]
+          },
+          value: "Ready to reserve"
+        }
+      })
+
+    assert html =~ ~s(<select)
+    assert html =~ ~s(name="promoted_filters[attention][value]")
+    assert html =~ ~s(data-promoted-filter-select)
+    assert html =~ ~s(<option value="Ready to reserve" selected>)
+    refute html =~ ~s(type="text")
+  end
+
   test "renders date shortcut preview for datetime shortcut filters" do
     html =
       render_component(&PromotedFilterEditor.editor/1, %{

@@ -9,6 +9,22 @@ defmodule SelectoComponents.Form.FilterRenderingTest do
     def name, do: :mysql
   end
 
+  describe "static_filter_options/1" do
+    test "normalizes scalar, Phoenix tuple, and map options" do
+      assert FilterRendering.static_filter_options(%{
+               options: ["open", {"Needs review", :review}, %{value: 3, label: "Retired"}]
+             }) == [
+               {"open", "open"},
+               {"review", "Needs review"},
+               {"3", "Retired"}
+             ]
+    end
+
+    test "returns no options for an open-ended field" do
+      assert FilterRendering.static_filter_options(%{type: :string}) == []
+    end
+  end
+
   describe "is_date_shortcut/1" do
     test "recognizes valid date shortcuts" do
       valid_shortcuts = [

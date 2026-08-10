@@ -14,10 +14,56 @@ defmodule SelectoComponents.Form.PromotedFilterEditor do
     cond do
       promoted_choice_source_filter?(assigns.filter) -> choice_source_filter_editor(assigns)
       promoted_multiselect_filter?(assigns.filter) -> multiselect_filter_editor(assigns)
+      promoted_static_options_filter?(assigns.filter) -> static_options_filter_editor(assigns)
       assigns.filter.render_kind == :datetime -> datetime_filter_editor(assigns)
       assigns.filter.render_kind == :text_search -> text_search_filter_editor(assigns)
       true -> standard_filter_editor(assigns)
     end
+  end
+
+  attr(:filter, :map, required: true)
+  attr(:theme, :map, required: true)
+
+  defp static_options_filter_editor(assigns) do
+    assigns =
+      assign(assigns,
+        options: FilterRendering.static_filter_options(assigns.filter.field_conf),
+        selected_value: to_string(assigns.filter.value || "")
+      )
+
+    ~H"""
+    <div class="space-y-2">
+      <span
+        class="inline-flex shrink-0 items-center rounded-full px-2 py-1 text-[0.7rem] font-medium uppercase tracking-[0.12em]"
+        style="background: color-mix(in srgb, var(--sc-primary) 14%, transparent); color: var(--sc-primary);"
+      >
+        {@comp_label}
+      </span>
+
+      <div class="relative">
+        <select
+          id={"promoted-filter-value-#{@filter.uuid}"}
+          name={"promoted_filters[#{@filter.uuid}][value]"}
+          class={Theme.slot(@theme, :select) <> " w-full appearance-none pr-9"}
+          data-promoted-filter-select
+        >
+          <option value="" selected={@selected_value == ""}>Choose...</option>
+          <%= for {value, label} <- @options do %>
+            <option value={value} selected={@selected_value == value}>{label}</option>
+          <% end %>
+        </select>
+        <svg
+          class="pointer-events-none absolute right-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2"
+          style="color: var(--sc-text-muted);"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path d="M5.22 7.22a.75.75 0 0 1 1.06 0L10 10.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 8.28a.75.75 0 0 1 0-1.06Z" />
+        </svg>
+      </div>
+    </div>
+    """
   end
 
   attr(:filter, :map, required: true)
@@ -348,6 +394,13 @@ defmodule SelectoComponents.Form.PromotedFilterEditor do
        do: true
 
   defp promoted_multiselect_filter?(_filter), do: false
+
+  defp promoted_static_options_filter?(%{comp: comp, field_conf: field_conf})
+       when comp in ["=", "!="] do
+    FilterRendering.static_filter_options(field_conf) != []
+  end
+
+  defp promoted_static_options_filter?(_filter), do: false
 
   defp promoted_choice_source_filter?(%{comp: comp, field_conf: field_conf})
        when comp in ["=", "!="] do

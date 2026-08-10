@@ -597,6 +597,7 @@ defmodule SelectoComponents.Form.FilterRendering do
       assigns
       |> assign(
         is_multi_select_id: is_multi_select_id,
+        static_filter_options: static_filter_options(column_def),
         choice_source_metadata: choice_source_metadata,
         choice_source_value: choice_source_value,
         choice_source_display_value:
@@ -678,6 +679,39 @@ defmodule SelectoComponents.Form.FilterRendering do
               container_class="col-span-2"
               disabled={@current_comp in ["IS NULL", "IS NOT NULL"]}
             />
+          <% @static_filter_options != [] and @current_comp in ["=", "!="] -> %>
+            <div class="relative col-span-2">
+              <select
+                id={"filter-value-#{@uuid}"}
+                name={"filters[#{@uuid}][value]"}
+                class="sc-select w-full appearance-none pr-9"
+                data-static-filter-select
+              >
+                <option
+                  value=""
+                  selected={value_for(@filter_value, "value") in [nil, ""]}
+                >
+                  Choose...
+                </option>
+                <%= for {value, label} <- @static_filter_options do %>
+                  <option
+                    value={value}
+                    selected={normalize_string(value_for(@filter_value, "value")) == value}
+                  >
+                    {label}
+                  </option>
+                <% end %>
+              </select>
+              <svg
+                class="pointer-events-none absolute right-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2"
+                style="color: var(--sc-text-muted);"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M5.22 7.22a.75.75 0 0 1 1.06 0L10 10.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 8.28a.75.75 0 0 1 0-1.06Z" />
+              </svg>
+            </div>
           <% @supports_manual_in_values and @current_comp in ["IN", "NOT IN"] -> %>
             <div
               id={"filter-in-values-#{@uuid}-#{:erlang.phash2({@selected_in_values, @current_comp})}"}
@@ -2501,6 +2535,46 @@ defmodule SelectoComponents.Form.FilterRendering do
     do: comp in ["=", "!="]
 
   defp choice_source_filter_shell?(_metadata, _comp), do: false
+
+  @doc """
+  Normalizes a field or filter's finite `:options` vocabulary for HTML selects.
+
+  Scalar entries use the same value and label. Two-tuples follow Phoenix's
+  `{label, value}` convention, while maps may provide `:label` and `:value`.
+  """
+  def static_filter_options(%{} = field_conf) do
+    field_conf
+    |> Map.get(:options, Map.get(field_conf, "options", []))
+    |> case do
+      options when is_list(options) -> Enum.flat_map(options, &normalize_static_filter_option/1)
+      _options -> []
+    end
+  end
+
+  def static_filter_options(_field_conf), do: []
+
+  defp normalize_static_filter_option({label, value}) do
+    [{normalize_string(value), normalize_string(label)}]
+  end
+
+  defp normalize_static_filter_option(%{} = option) do
+    value = Map.get(option, :value, Map.get(option, "value"))
+    label = Map.get(option, :label, Map.get(option, "label"))
+
+    case {value, label} do
+      {nil, _label} -> []
+      {value, nil} -> [{normalize_string(value), normalize_string(value)}]
+      {value, label} -> [{normalize_string(value), normalize_string(label)}]
+    end
+  end
+
+  defp normalize_static_filter_option(option)
+       when is_binary(option) or is_atom(option) or is_number(option) or is_boolean(option) do
+    normalized = normalize_string(option)
+    [{normalized, normalized}]
+  end
+
+  defp normalize_static_filter_option(_option), do: []
 
   defp choice_source_metadata(%{} = field_conf) do
     case Map.get(field_conf, :choice_source_metadata) ||
