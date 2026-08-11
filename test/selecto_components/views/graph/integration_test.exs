@@ -43,7 +43,7 @@ defmodule SelectoComponents.Views.Graph.IntegrationTest do
          } do
       # Step 1: Generate initial state
       initial_state = Process.initial_state(selecto, :graph)
-      assert initial_state.chart_type == "bar"
+      assert initial_state.visual.type == "bar"
 
       # Step 2: Simulate user form submission
       form_params = %{
@@ -71,11 +71,10 @@ defmodule SelectoComponents.Views.Graph.IntegrationTest do
 
       # Step 3: Convert form params to state
       state = Process.param_to_state(form_params, :graph)
-      assert state.chart_type == "bar"
-      assert state.options["title"] == "Films by Category and Rating"
-      assert length(state.x_axis) == 1
-      assert length(state.y_axis) == 1
-      assert length(state.series) == 1
+      assert state.visual.type == "bar"
+      assert state.visual.options["title"] == "Films by Category and Rating"
+      assert length(state.group_by) == 2
+      assert length(state.aggregate) == 1
 
       # Step 4: Generate Selecto view structure
       {view_set, _} = Process.view(nil, form_params, columns, [], nil)
@@ -301,7 +300,7 @@ defmodule SelectoComponents.Views.Graph.IntegrationTest do
       {view_set, _} = Process.view(nil, empty_params, columns, [], nil)
 
       # Should handle gracefully
-      assert state.chart_type == "bar"
+      assert state.visual.type == "auto"
       assert view_set.groups == []
       assert view_set.aggregates == []
 

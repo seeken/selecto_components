@@ -3,292 +3,189 @@ defmodule SelectoComponents.Views.Graph.Form do
 
   import SelectoComponents.Components.Common
   alias SelectoComponents.Theme
+  alias SelectoComponents.Views.Aggregate.Form, as: AnalyticForm
+  alias SelectoComponents.Views.Graph.Process
 
+  @impl true
   def render(assigns) do
     graph_view_key = current_view_key(assigns[:view])
-    graph_view = view_state(assigns[:view_config], graph_view_key)
+    component_view = normalize_view(assigns[:view], graph_view_key)
+
+    graph_state =
+      assigns[:view_config]
+      |> view_state(graph_view_key)
+      |> Process.normalize_state()
+
+    visual = Map.get(graph_state, :visual, %{})
+    graph_view_config = put_graph_state(assigns[:view_config], graph_view_key, graph_state)
 
     assigns =
       assigns
       |> assign_new(:theme, fn -> Theme.default_theme(:light) end)
-      |> assign(:graph_view_key, graph_view_key)
-      |> assign(:graph_chart_type, map_get(graph_view, :chart_type, "bar"))
-      |> assign(:graph_x_axis, map_get(graph_view, :x_axis, []))
-      |> assign(:graph_y_axis, map_get(graph_view, :y_axis, []))
-      |> assign(:graph_series, map_get(graph_view, :series, []))
-      |> assign(:graph_color_by, map_get(graph_view, :color_by, []))
-      |> assign(:graph_options, map_get(graph_view, :options, %{}))
+      |> assign_new(:id, fn -> "graph" end)
+      |> assign(
+        component_view: component_view,
+        graph_view_config: graph_view_config,
+        graph_view_key: graph_view_key,
+        graph_state: graph_state,
+        graph_group_by: Map.get(graph_state, :group_by, []),
+        graph_aggregate: Map.get(graph_state, :aggregate, []),
+        graph_visual: visual,
+        graph_chart_type: map_get(visual, :type, "auto"),
+        graph_x: map_get(visual, :x),
+        graph_series: map_get(visual, :series, []),
+        graph_stack: map_get(visual, :stack, "auto"),
+        graph_measure_overrides: map_get(visual, :measure_overrides, %{}),
+        graph_options: map_get(visual, :options, %{})
+      )
 
     ~H"""
-    <div class="space-y-3">
-      <.sc_collapsible_section
-        theme={@theme}
-        title="Chart"
-        summary={chart_type_label(@graph_chart_type)}
-        open={true}
-      >
-        <label class="mb-2 block text-sm font-medium" style="color: var(--sc-text-secondary)">Chart Type</label>
-        <.sc_select_with_slot theme={@theme} name="chart_type">
-          <option value="bar" selected={@graph_chart_type == "bar"}>Bar Chart</option>
-          <option value="line" selected={@graph_chart_type == "line"}>Line Chart</option>
-          <option value="pie" selected={@graph_chart_type == "pie"}>Pie Chart</option>
-          <option value="scatter" selected={@graph_chart_type == "scatter"}>Scatter Plot</option>
-          <option value="area" selected={@graph_chart_type == "area"}>Area Chart</option>
-        </.sc_select_with_slot>
-      </.sc_collapsible_section>
-       
-      <.sc_collapsible_section
-        theme={@theme}
-        title="X-Axis"
-        summary={selected_fields_summary(@graph_x_axis, @columns, "No category fields", selecto: @selecto)}
-        open={true}
-      >
-        <.live_component
-          module={SelectoComponents.Components.ListPicker}
-          id={"#{@graph_view_key}_x_axis"}
-          theme={@theme}
-          compact={true}
-          available_label="Fields"
-          selected_label="Categories"
-          fieldname="x_axis"
-          view={@view}
-          available={
-            Enum.filter(@columns, fn {_f, _n, format} -> format not in [:component, :link] end)
-          }
-          selected_items={@graph_x_axis}
-        >
-          <:item_summary :let={{_id, item, config, _index}}>
-            <% col = Selecto.field(@selecto, item) %>
-            <% axis_summary = graph_x_axis_summary(col, config) %>
-            <span class="truncate"><%= summary_title(config, graph_column_name(col, item)) %></span>
-            <span :if={present_summary?(axis_summary)} class="truncate text-sm font-normal" style="color: var(--sc-text-muted);"><%= axis_summary %></span>
-          </:item_summary>
-          <:item_form :let={{id, item, config, index}}>
-            <input name={"x_axis[#{id}][field]"} type="hidden" value={item} />
-            <input name={"x_axis[#{id}][index]"} type="hidden" value={index} />
-            <.live_component
-              module={SelectoComponents.Views.Graph.XAxisConfig}
-              id={"#{@graph_view_key}-x-axis-config-#{id}"}
-              col={Selecto.field(@selecto, item)}
-              uuid={id}
-              item={item}
-              fieldname="x_axis"
-              prefix={"x_axis[#{id}]"}
-              config={config}
-              theme={@theme}
-            />
-          </:item_form>
-          <:between_item :let={{id, _item, config, _index, {next_id, _next_item, _next_config}}}>
-            <% linked? = linked_to_next?(config) %>
-            <% toggle_id = "graph-x-axis-link-#{id}-#{next_id}-#{if linked?, do: "on", else: "off"}" %>
-            <label
-              for={toggle_id}
-              class="group flex items-center gap-1.5"
-              title="Link this category field to the next one"
-              aria-label="Link this category field to the next one"
-            >
-              <span class="h-px w-4 transition" style="background: var(--sc-surface-border);"></span>
-              <input type="hidden" name={"x_axis[#{id}][linked_to_next]"} value="false" />
-              <input
-                id={toggle_id}
-                type="checkbox"
-                name={"x_axis[#{id}][linked_to_next]"}
-                value="true"
-                checked={linked?}
-                class="h-3.5 w-3.5 cursor-pointer rounded-full border transition hover:scale-110"
-                style={
-                  if linked? do
-                    "border-color: var(--sc-accent); background: var(--sc-accent-soft); accent-color: var(--sc-accent);"
-                  else
-                    "border-color: var(--sc-surface-border); background: var(--sc-surface-bg-alt); accent-color: var(--sc-accent);"
-                  end
-                }
-              />
-              <span class="sr-only">Link next category field</span>
-              <span
-                class="h-px w-4 transition"
-                style={
-                  if linked? do
-                    "background: color-mix(in srgb, var(--sc-accent) 55%, var(--sc-surface-border));"
-                  else
-                    "background: var(--sc-surface-border);"
-                  end
-                }
-              >
-              </span>
-            </label>
-          </:between_item>
-        </.live_component>
-      </.sc_collapsible_section>
-       
-      <.sc_collapsible_section
-        theme={@theme}
-        title="Y-Axis"
-        summary={selected_fields_summary(@graph_y_axis, @columns, "No value fields", selecto: @selecto)}
-        open={true}
-      >
-        <.live_component
-          module={SelectoComponents.Components.ListPicker}
-          id={"#{@graph_view_key}_y_axis"}
-          theme={@theme}
-          compact={true}
-          available_label="Fields"
-          selected_label="Values"
-          fieldname="y_axis"
-          view={@view}
-          available={@columns}
-          selected_items={@graph_y_axis}
-        >
-          <:item_summary :let={{_id, item, config, _index}}>
-            <% col = Selecto.field(@selecto, item) %>
-            <span class="truncate"><%= summary_title(config, graph_column_name(col, item)) %></span>
-            <span class="truncate text-sm font-normal" style="color: var(--sc-text-muted);"><%= graph_y_axis_summary(config) %></span>
-          </:item_summary>
-          <:item_form :let={{id, item, config, index}}>
-            <input name={"y_axis[#{id}][field]"} type="hidden" value={item} />
-            <input name={"y_axis[#{id}][index]"} type="hidden" value={index} />
-            <.live_component
-              module={SelectoComponents.Views.Graph.YAxisConfig}
-              id={"#{@graph_view_key}-y-axis-config-#{id}"}
-              col={Selecto.field(@selecto, item)}
-              uuid={id}
-              item={item}
-              fieldname="y_axis"
-              prefix={"y_axis[#{id}]"}
-              config={config}
-              theme={@theme}
-            />
-          </:item_form>
-        </.live_component>
-      </.sc_collapsible_section>
-       
-      <.sc_collapsible_section
-        theme={@theme}
-        title="Series"
-        summary={selected_fields_summary(@graph_series, @columns, "Optional grouping", selecto: @selecto)}
-        open={not Enum.empty?(@graph_series)}
-      >
-        <p class="mb-3 text-sm" style="color: var(--sc-text-secondary);">
-          Add a secondary grouping to create multiple data series in your chart.
+    <div id={"graph-form-#{@id}"} class="space-y-3">
+      <div class={Theme.slot(@theme, :panel) <> " px-3 py-3"} style="background: var(--sc-surface-bg-alt);">
+        <h3 class="text-sm font-semibold" style="color: var(--sc-text-primary);">
+          Aggregate query, graph projection
+        </h3>
+        <p class="mt-1 text-sm" style="color: var(--sc-text-secondary);">
+          Group By and Aggregates use the same controls and query semantics as Aggregate View.
+          The settings below only decide how that result is drawn.
         </p>
-        <.live_component
-          module={SelectoComponents.Components.ListPicker}
-          id={"#{@graph_view_key}_series"}
-          theme={@theme}
-          compact={true}
-          available_label="Fields"
-          selected_label="Series Groups"
-          fieldname="series"
-          view={@view}
-          available={
-            Enum.filter(@columns, fn {_f, _n, format} -> format not in [:component, :link] end)
-          }
-          selected_items={@graph_series}
-        >
-          <:item_summary :let={{_id, item, config, _index}}>
-            <% col = Selecto.field(@selecto, item) %>
-            <span class="truncate"><%= summary_title(config, graph_column_name(col, item)) %></span>
-            <span class="truncate text-sm font-normal" style="color: var(--sc-text-muted);"><%= graph_series_summary(col, config) %></span>
-          </:item_summary>
-          <:item_form :let={{id, item, config, index}}>
-            <input name={"series[#{id}][field]"} type="hidden" value={item} />
-            <input name={"series[#{id}][index]"} type="hidden" value={index} />
-            <.live_component
-              module={SelectoComponents.Views.Graph.SeriesConfig}
-              id={"#{@graph_view_key}-series-config-#{id}"}
-              col={Selecto.field(@selecto, item)}
-              uuid={id}
-              item={item}
-              fieldname="series"
-              prefix={"series[#{id}]"}
-              config={config}
-              theme={@theme}
-            />
-          </:item_form>
-          <:between_item :let={{id, _item, config, _index, {next_id, _next_item, _next_config}}}>
-            <% linked? = linked_to_next?(config) %>
-            <% toggle_id = "graph-series-link-#{id}-#{next_id}-#{if linked?, do: "on", else: "off"}" %>
-            <label
-              for={toggle_id}
-              class="group flex items-center gap-1.5"
-              title="Link this series field to the next one"
-              aria-label="Link this series field to the next one"
-            >
-              <span class="h-px w-4 transition" style="background: var(--sc-surface-border);"></span>
-              <input type="hidden" name={"series[#{id}][linked_to_next]"} value="false" />
-              <input
-                id={toggle_id}
-                type="checkbox"
-                name={"series[#{id}][linked_to_next]"}
-                value="true"
-                checked={linked?}
-                class="h-3.5 w-3.5 cursor-pointer rounded-full border transition hover:scale-110"
-                style={
-                  if linked? do
-                    "border-color: var(--sc-accent); background: var(--sc-accent-soft); accent-color: var(--sc-accent);"
-                  else
-                    "border-color: var(--sc-surface-border); background: var(--sc-surface-bg-alt); accent-color: var(--sc-accent);"
-                  end
-                }
-              />
-              <span class="sr-only">Link next series field</span>
-              <span
-                class="h-px w-4 transition"
-                style={
-                  if linked? do
-                    "background: color-mix(in srgb, var(--sc-accent) 55%, var(--sc-surface-border));"
-                  else
-                    "background: var(--sc-surface-border);"
-                  end
-                }
-              >
-              </span>
-            </label>
-          </:between_item>
-        </.live_component>
-      </.sc_collapsible_section>
-       
+      </div>
+
+      <.live_component
+        module={AnalyticForm}
+        id={"#{@id}-analytic-query"}
+        theme={@theme}
+        columns={@columns}
+        view_config={@graph_view_config}
+        view={@component_view}
+        selecto={@selecto}
+        state_view_key={@graph_view_key}
+        query_only={true}
+        group_param="graph_group_by"
+        aggregate_param="graph_aggregate"
+      />
+
       <.sc_collapsible_section
         theme={@theme}
-        title="Color"
-        summary={selected_fields_summary(@graph_color_by, @columns, "Metric colors", selecto: @selecto)}
-        open={not Enum.empty?(@graph_color_by)}
+        title="Visual Mapping"
+        summary={visual_summary(@graph_chart_type, @graph_group_by)}
+        open={true}
       >
-        <.live_component
-          module={SelectoComponents.Components.ListPicker}
-          id={"#{@graph_view_key}_color_by"}
-          theme={@theme}
-          compact={true}
-          available_label="Fields"
-          selected_label="Color By"
-          fieldname="color_by"
-          view={@view}
-          available={
-            Enum.filter(@columns, fn {_f, _n, format} -> format not in [:component, :link] end)
-          }
-          selected_items={@graph_color_by}
-        >
-          <:item_summary :let={{_id, item, config, _index}}>
-            <% col = Selecto.field(@selecto, item) %>
-            <span class="truncate"><%= summary_title(config, graph_column_name(col, item)) %></span>
-            <span class="truncate text-sm font-normal" style="color: var(--sc-text-muted);"><%= graph_series_summary(col, config) %></span>
-          </:item_summary>
-          <:item_form :let={{id, item, config, index}}>
-            <input name={"color_by[#{id}][field]"} type="hidden" value={item} />
-            <input name={"color_by[#{id}][index]"} type="hidden" value={index} />
-            <.live_component
-              module={SelectoComponents.Views.Graph.SeriesConfig}
-              id={"#{@graph_view_key}-color-by-config-#{id}"}
-              col={Selecto.field(@selecto, item)}
-              uuid={id}
-              item={item}
-              fieldname="color_by"
-              prefix={"color_by[#{id}]"}
-              config={config}
-              theme={@theme}
-            />
-          </:item_form>
-        </.live_component>
+        <div class="grid gap-4 md:grid-cols-3">
+          <label class="block text-sm">
+            <span class="text-xs font-medium" style="color: var(--sc-text-secondary);">Chart Type</span>
+            <.sc_select_with_slot theme={@theme} name="graph_chart_type" class="mt-1 w-full">
+              <option value="auto" selected={@graph_chart_type == "auto"}>Auto</option>
+              <option value="bar" selected={@graph_chart_type == "bar"}>Bar</option>
+              <option value="line" selected={@graph_chart_type == "line"}>Line</option>
+              <option value="area" selected={@graph_chart_type == "area"}>Area</option>
+              <option value="pie" selected={@graph_chart_type == "pie"}>Pie</option>
+              <option value="scatter" selected={@graph_chart_type == "scatter"}>Scatter</option>
+            </.sc_select_with_slot>
+          </label>
+
+          <label class="block text-sm">
+            <span class="text-xs font-medium" style="color: var(--sc-text-secondary);">X Group</span>
+            <.sc_select_with_slot theme={@theme} name="graph_x" class="mt-1 w-full">
+              <option value="" selected={@graph_x in [nil, ""]}>Auto (first Group By)</option>
+              <option
+                :for={item <- @graph_group_by}
+                value={item_id(item)}
+                selected={@graph_x == item_id(item)}
+              >
+                {item_label(item, @selecto)}
+              </option>
+            </.sc_select_with_slot>
+          </label>
+
+          <label class="block text-sm">
+            <span class="text-xs font-medium" style="color: var(--sc-text-secondary);">Series Layout</span>
+            <.sc_select_with_slot theme={@theme} name="graph_stack" class="mt-1 w-full">
+              <option value="auto" selected={@graph_stack == "auto"}>Auto</option>
+              <option value="grouped" selected={@graph_stack == "grouped"}>Grouped</option>
+              <option value="stacked" selected={@graph_stack == "stacked"}>Stacked</option>
+            </.sc_select_with_slot>
+          </label>
+        </div>
+
+        <div :if={length(@graph_group_by) > 1} class="mt-4">
+          <div class="text-xs font-medium" style="color: var(--sc-text-secondary);">Series Groups</div>
+          <p class="mt-1 text-xs" style="color: var(--sc-text-muted);">
+            With none selected, every Group By after X becomes a series automatically.
+          </p>
+          <input type="hidden" name="graph_series[]" value="" />
+          <div class="mt-2 flex flex-wrap gap-3">
+            <label
+              :for={item <- non_x_items(@graph_group_by, @graph_x)}
+              class="flex items-center gap-2 text-sm"
+              style="color: var(--sc-text-secondary);"
+            >
+              <input
+                type="checkbox"
+                name="graph_series[]"
+                value={item_id(item)}
+                checked={item_id(item) in @graph_series}
+                class="checkbox checkbox-sm"
+              />
+              <span>{item_label(item, @selecto)}</span>
+            </label>
+          </div>
+        </div>
+      </.sc_collapsible_section>
+
+      <.sc_collapsible_section
+        :if={@graph_aggregate != []}
+        theme={@theme}
+        title="Measure Display"
+        summary="Mark, axis, and color overrides"
+        open={false}
+      >
+        <div class="space-y-4">
+          <div
+            :for={item <- @graph_aggregate}
+            class="grid gap-3 rounded-lg border p-3 md:grid-cols-[minmax(10rem,1fr)_9rem_9rem_10rem]"
+            style="border-color: var(--sc-surface-border);"
+          >
+            <% override = map_get(@graph_measure_overrides, item_id(item), %{}) %>
+            <div class="self-center text-sm font-medium" style="color: var(--sc-text-primary);">
+              {item_label(item, @selecto)}
+            </div>
+            <label class="text-xs" style="color: var(--sc-text-secondary);">
+              Mark
+              <.sc_select_with_slot
+                theme={@theme}
+                name={"graph_measure_overrides[#{item_id(item)}][mark]"}
+                class="mt-1 w-full"
+              >
+                <option value="auto" selected={map_get(override, :mark, "auto") == "auto"}>Auto</option>
+                <option value="bar" selected={map_get(override, :mark) == "bar"}>Bar</option>
+                <option value="line" selected={map_get(override, :mark) == "line"}>Line</option>
+              </.sc_select_with_slot>
+            </label>
+            <label class="text-xs" style="color: var(--sc-text-secondary);">
+              Axis
+              <.sc_select_with_slot
+                theme={@theme}
+                name={"graph_measure_overrides[#{item_id(item)}][axis]"}
+                class="mt-1 w-full"
+              >
+                <option value="auto" selected={map_get(override, :axis, "auto") == "auto"}>Auto</option>
+                <option value="left" selected={map_get(override, :axis) == "left"}>Left</option>
+                <option value="right" selected={map_get(override, :axis) == "right"}>Right</option>
+              </.sc_select_with_slot>
+            </label>
+            <label class="text-xs" style="color: var(--sc-text-secondary);">
+              Color
+              <.sc_input
+                theme={@theme}
+                name={"graph_measure_overrides[#{item_id(item)}][color]"}
+                value={map_get(override, :color, "")}
+                placeholder="#3b82f6"
+                class="mt-1 w-full"
+              />
+            </label>
+          </div>
+        </div>
       </.sc_collapsible_section>
 
       <.sc_collapsible_section
@@ -297,100 +194,91 @@ defmodule SelectoComponents.Views.Graph.Form do
         summary={display_options_summary(@graph_options)}
         open={false}
       >
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label class="mb-1 block text-sm font-medium" style="color: var(--sc-text-secondary)">Chart Title</label>
-            <.sc_input theme={@theme} name="options[title]" value={option_value(@graph_options, :title, "")} placeholder="Enter chart title" />
-          </div>
-          <div>
-            <label class="mb-1 block text-sm font-medium" style="color: var(--sc-text-secondary)">X-Axis Label</label>
-            <.sc_input theme={@theme} name="options[x_axis_label]" value={option_value(@graph_options, :x_axis_label, "")} placeholder="X-axis label" />
-          </div>
-          <div>
-            <label class="mb-1 block text-sm font-medium" style="color: var(--sc-text-secondary)">Y-Axis Label</label>
-            <.sc_input theme={@theme} name="options[y_axis_label]" value={option_value(@graph_options, :y_axis_label, "")} placeholder="Y-axis label" />
-          </div>
-          <div>
-            <label class="mb-1 block text-sm font-medium" style="color: var(--sc-text-secondary)">Y2-Axis Label</label>
-            <.sc_input theme={@theme} name="options[y2_axis_label]" value={option_value(@graph_options, :y2_axis_label, "")} placeholder="Secondary Y-axis label" />
-          </div>
-          <div>
-            <label class="mb-1 block text-sm font-medium" style="color: var(--sc-text-secondary)">Legend Position</label>
-            <.sc_select_with_slot theme={@theme} name="options[legend_position]">
-              <option value="top" selected={option_value(@graph_options, :legend_position) == "top"}>
-                Top
-              </option>
-              <option
-                value="bottom"
-                selected={option_value(@graph_options, :legend_position) == "bottom"}
-              >
-                Bottom
-              </option>
-              <option value="left" selected={option_value(@graph_options, :legend_position) == "left"}>
-                Left
-              </option>
-              <option
-                value="right"
-                selected={option_value(@graph_options, :legend_position) == "right"}
-              >
-                Right
-              </option>
-              <option value="none" selected={option_value(@graph_options, :legend_position) == "none"}>
-                Hide Legend
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <label class="block text-sm" style="color: var(--sc-text-secondary);">
+            Chart Title
+            <.sc_input theme={@theme} name="graph_options[title]" value={option_value(@graph_options, :title, "")} />
+          </label>
+          <label class="block text-sm" style="color: var(--sc-text-secondary);">
+            X-Axis Label
+            <.sc_input theme={@theme} name="graph_options[x_axis_label]" value={option_value(@graph_options, :x_axis_label, "")} />
+          </label>
+          <label class="block text-sm" style="color: var(--sc-text-secondary);">
+            Y-Axis Label
+            <.sc_input theme={@theme} name="graph_options[y_axis_label]" value={option_value(@graph_options, :y_axis_label, "")} />
+          </label>
+          <label class="block text-sm" style="color: var(--sc-text-secondary);">
+            Y2-Axis Label
+            <.sc_input theme={@theme} name="graph_options[y2_axis_label]" value={option_value(@graph_options, :y2_axis_label, "")} />
+          </label>
+          <label class="block text-sm" style="color: var(--sc-text-secondary);">
+            Legend Position
+            <.sc_select_with_slot theme={@theme} name="graph_options[legend_position]" class="mt-1 w-full">
+              <option :for={position <- ~w(top bottom left right none)} value={position} selected={option_value(@graph_options, :legend_position, "bottom") == position}>
+                {position_label(position)}
               </option>
             </.sc_select_with_slot>
-          </div>
+          </label>
         </div>
 
-        <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <label class={Theme.slot(@theme, :checkbox_label) <> " flex items-center"}>
-            <input
-              name="options[show_grid]"
-              type="checkbox"
-              value="true"
-              checked={option_checked(@graph_options, :show_grid, false)}
-              class="mr-2 h-4 w-4 rounded border"
-              style="border-color: var(--sc-surface-border); accent-color: var(--sc-accent);"
-            />
-            <span class="text-sm" style="color: var(--sc-text-secondary);">Show Grid Lines</span>
-          </label>
-          <label class={Theme.slot(@theme, :checkbox_label) <> " flex items-center"}>
-            <input
-              name="options[enable_animations]"
-              type="checkbox"
-              value="true"
-              checked={option_checked(@graph_options, :enable_animations, true)}
-              class="mr-2 h-4 w-4 rounded border"
-              style="border-color: var(--sc-surface-border); accent-color: var(--sc-accent);"
-            />
-            <span class="text-sm" style="color: var(--sc-text-secondary);">Enable Animations</span>
-          </label>
-          <label class={Theme.slot(@theme, :checkbox_label) <> " flex items-center"}>
-            <input
-              name="options[responsive]"
-              type="checkbox"
-              value="true"
-              checked={option_checked(@graph_options, :responsive, true)}
-              class="mr-2 h-4 w-4 rounded border"
-              style="border-color: var(--sc-surface-border); accent-color: var(--sc-accent);"
-            />
-            <span class="text-sm" style="color: var(--sc-text-secondary);">Responsive</span>
-          </label>
+        <div class="mt-4 flex flex-wrap gap-4">
+          <.boolean_option name="show_grid" label="Show grid lines" options={@graph_options} />
+          <.boolean_option name="enable_animations" label="Enable animations" options={@graph_options} default={true} />
+          <.boolean_option name="responsive" label="Responsive" options={@graph_options} default={true} />
         </div>
       </.sc_collapsible_section>
     </div>
     """
   end
 
-  defp current_view_key({id, _mod, _name, _opts}) when is_atom(id), do: id
-  defp current_view_key(_), do: :graph
+  attr(:name, :string, required: true)
+  attr(:label, :string, required: true)
+  attr(:options, :map, required: true)
+  attr(:default, :boolean, default: false)
 
-  defp chart_type_label("bar"), do: "Bar chart"
-  defp chart_type_label("line"), do: "Line chart"
-  defp chart_type_label("pie"), do: "Pie chart"
-  defp chart_type_label("scatter"), do: "Scatter plot"
-  defp chart_type_label("area"), do: "Area chart"
-  defp chart_type_label(_type), do: "Chart type"
+  defp boolean_option(assigns) do
+    ~H"""
+    <label class="flex items-center gap-2 text-sm" style="color: var(--sc-text-secondary);">
+      <input type="hidden" name={"graph_options[#{@name}]"} value="false" />
+      <input
+        type="checkbox"
+        name={"graph_options[#{@name}]"}
+        value="true"
+        checked={option_checked(@options, @name, @default)}
+        class="checkbox checkbox-sm"
+      />
+      <span>{@label}</span>
+    </label>
+    """
+  end
+
+  defp current_view_key({id, _mod, _name, _opts}) when is_atom(id), do: id
+  defp current_view_key(id) when is_atom(id), do: id
+  defp current_view_key(_view), do: :graph
+
+  defp normalize_view({id, _module, _name, _opts} = view, _view_key) when is_atom(id), do: view
+
+  defp normalize_view(_view, view_key),
+    do: {view_key, SelectoComponents.Views.Graph, "Graph View", %{}}
+
+  defp view_state(view_config, view_key) do
+    view_config
+    |> map_get(:views, %{})
+    |> map_get(view_key, %{})
+  end
+
+  defp put_graph_state(view_config, view_key, graph_state) when is_map(view_config) do
+    views = map_get(view_config, :views, %{}) |> Map.put(view_key, graph_state)
+    Map.put(view_config, :views, views)
+  end
+
+  defp put_graph_state(_view_config, view_key, graph_state),
+    do: %{views: %{view_key => graph_state}}
+
+  defp visual_summary(type, group_by) do
+    chart = if type == "auto", do: "Automatic chart", else: "#{String.capitalize(type)} chart"
+    "#{chart}; #{length(group_by)} grouping(s)"
+  end
 
   defp display_options_summary(options) do
     case option_value(options, :title, "") do
@@ -399,108 +287,51 @@ defmodule SelectoComponents.Views.Graph.Form do
     end
   end
 
-  defp view_state(view_config, view_key) do
-    view_config
-    |> map_get(:views, %{})
-    |> map_get(view_key, %{})
+  defp non_x_items(items, nil), do: Enum.drop(items, 1)
+
+  defp non_x_items(items, x_id),
+    do: Enum.reject(items, &(item_id(&1) == x_id))
+
+  defp item_id({id, _field, _config}), do: id
+  defp item_id([id, _field, _config]), do: id
+  defp item_id(_item), do: nil
+
+  defp item_field({_id, field, _config}), do: field
+  defp item_field([_id, field, _config]), do: field
+  defp item_field(_item), do: nil
+
+  defp item_label(item, selecto) do
+    field = item_field(item)
+
+    case field_definition(selecto, field) do
+      %{name: name} when is_binary(name) -> name
+      _ -> to_string(field || "")
+    end
   end
 
-  defp map_get(map, key, default) when is_map(map) and is_atom(key) do
-    Map.get(map, key, Map.get(map, Atom.to_string(key), default))
-  end
+  defp field_definition(%{field: resolver}, field) when is_function(resolver, 1),
+    do: resolver.(field)
 
-  defp map_get(map, key, default) when is_map(map) and is_binary(key) do
-    Map.get(map, key, default)
-  end
+  defp field_definition(selecto, field), do: Selecto.field(selecto, field)
 
-  defp map_get(_map, _key, default), do: default
+  defp position_label("none"), do: "Hide legend"
+  defp position_label(position), do: String.capitalize(position)
 
-  defp option_value(options, key, default \\ nil) do
-    map_get(options, key, default)
-  end
+  defp option_value(options, key, default), do: map_get(options, key, default)
 
   defp option_checked(options, key, default) do
     case option_value(options, key, default) do
-      true -> true
-      false -> false
-      "true" -> true
-      "false" -> false
-      nil -> default
+      value when value in [true, "true", "on", 1, "1"] -> true
+      value when value in [false, "false", 0, "0"] -> false
       _ -> default
     end
   end
 
-  defp graph_column_name(col, item) do
-    cond do
-      is_map(col) and Map.get(col, :name) -> col.name
-      true -> to_string(item || "")
-    end
-  end
+  defp map_get(map, key, default \\ nil)
 
-  defp summary_title(config, field_name) do
-    case Map.get(config || %{}, "alias", "") do
-      value when value in [nil, ""] -> field_name
-      value -> "#{value} / #{field_name}"
-    end
-  end
+  defp map_get(map, key, default) when is_map(map) and is_atom(key),
+    do: Map.get(map, key, Map.get(map, Atom.to_string(key), default))
 
-  defp graph_x_axis_summary(col, config) do
-    cond do
-      Map.get(config || %{}, "format") not in [nil, ""] ->
-        format_summary_label(Map.get(config, "format"))
-
-      Map.get(config || %{}, "sort") not in [nil, ""] ->
-        "sort #{Map.get(config, "sort")}"
-
-      Map.get(col || %{}, :type, :string) in [:string, :text] and
-          Map.get(config || %{}, "max_length") not in [nil, ""] ->
-        "max #{Map.get(config, "max_length")}"
-
-      true ->
-        nil
-    end
-  end
-
-  defp graph_y_axis_summary(config) do
-    function = Map.get(config || %{}, "function", "count")
-    axis = Map.get(config || %{}, "axis", "left")
-    "#{function} on #{axis} axis"
-  end
-
-  defp graph_series_summary(col, config) do
-    cond do
-      Map.get(config || %{}, "format") not in [nil, ""] ->
-        format_summary_label(Map.get(config, "format"))
-
-      Map.get(config || %{}, "max_series") not in [nil, "", "10"] ->
-        "max #{Map.get(config, "max_series")}"
-
-      (Selecto.Temporal.date_like_type(col || %{}) || Map.get(col || %{}, :type, :string)) in [
-        :datetime,
-        :timestamp,
-        :naive_datetime,
-        :utc_datetime,
-        :date
-      ] ->
-        "date grouping"
-
-      true ->
-        "default grouping"
-    end
-  end
-
-  defp format_summary_label(value) do
-    SelectoComponents.Helpers.aggregate_datetime_format_label(value)
-  end
-
-  defp present_summary?(value), do: value not in [nil, ""]
-
-  defp linked_to_next?(config) when is_map(config) do
-    case Map.get(config, "linked_to_next", Map.get(config, :linked_to_next)) do
-      value when value in [true, "true", "on", "1", 1] -> true
-      _ -> false
-    end
-  end
-
-  defp linked_to_next?(_config), do: false
+  defp map_get(map, key, default) when is_map(map), do: Map.get(map, key, default)
+  defp map_get(_map, _key, default), do: default
 end

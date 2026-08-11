@@ -36,9 +36,17 @@ defmodule SelectoComponents.QueryContract do
       filters: %{type: :array, items: :filter}
     },
     graph: %{
-      x_axis: %{type: :array, items: :field_id},
-      y_axis: %{type: :array, items: :metric},
-      series: %{type: :array, items: :field_id},
+      group_by: %{type: :array, items: :field_id},
+      aggregate: %{type: :array, items: :metric},
+      visual: %{
+        type: :object,
+        properties: %{
+          type: %{type: :enum, values: [:auto, :bar, :line, :area, :pie, :scatter]},
+          x: %{type: :string},
+          series: %{type: :array, items: :string},
+          stack: %{type: :enum, values: [:auto, :grouped, :stacked]}
+        }
+      },
       filters: %{type: :array, items: :filter}
     }
   }

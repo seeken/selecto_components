@@ -2,6 +2,22 @@
 CHANGES
 =======
 
+V 0.4.12 - Aggregate-backed Graph Configuration
+------------------------------------------------
+
+- Rebuilt Graph configuration on the same Group By and Aggregates controls and
+  query pipeline as Aggregate View, leaving Graph to describe only visual
+  mapping.
+- Derived Aggregate and Graph defaults from column-local `default_grouping`
+  and `default_aggregate` hints while preserving explicit domain-level defaults
+  as overrides.
+- Added automatic chart selection, series mapping, stacking, scatter datasets,
+  per-measure mark/color/axis overrides, and compatible multi-axis defaults.
+- Migrated legacy Graph URL and saved-view state at the boundary while storing
+  new views as `group_by`, `aggregate`, and `visual` state.
+- Updated the packaged Selecto baseline to `>= 0.4.10` and bumped the package
+  version to `0.4.12`.
+
 V 0.4.11
 --------
 

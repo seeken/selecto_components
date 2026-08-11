@@ -566,11 +566,11 @@ defmodule SelectoComponents.QueryContractTest do
       validation =
         QueryContract.validate_intent(query_contract_document(), %{
           "view_mode" => "graph",
-          "x_axis" => ["status"],
-          "y_axis" => [
+          "group_by" => ["status", "customers.name"],
+          "aggregate" => [
             %{"field" => "customer_id", "function" => "sum"}
           ],
-          "series" => ["customers.name"],
+          "visual" => %{"type" => "auto", "x" => "status"},
           "filters" => [
             %{"field" => "status", "comparator" => "contains", "value" => "open"}
           ]
@@ -585,8 +585,8 @@ defmodule SelectoComponents.QueryContractTest do
       validation =
         QueryContract.validate_intent(query_contract_document(), %{
           "view_mode" => "graph",
-          "x_axis" => ["missing_axis"],
-          "y_axis" => [
+          "group_by" => ["missing_axis"],
+          "aggregate" => [
             %{"field" => "status", "function" => "sum"},
             %{"field" => "customer_id", "function" => "median"}
           ],
@@ -595,19 +595,33 @@ defmodule SelectoComponents.QueryContractTest do
 
       refute validation[:valid?]
 
-      assert Enum.find(validation.errors, &match?(%{code: :invalid_field, path: "x_axis.0"}, &1))
+      assert Enum.find(
+               validation.errors,
+               &match?(%{code: :invalid_field, path: "group_by.0"}, &1)
+             )
 
       assert Enum.find(validation.errors, &match?(%{code: :invalid_field, path: "series.0"}, &1))
 
       assert Enum.find(
                validation.errors,
-               &match?(%{code: :field_not_aggregatable, path: "y_axis.0.field"}, &1)
+               &match?(%{code: :field_not_aggregatable, path: "aggregate.0.field"}, &1)
              )
 
       assert Enum.find(
                validation.errors,
-               &match?(%{code: :invalid_aggregate_function, path: "y_axis.1.function"}, &1)
+               &match?(%{code: :invalid_aggregate_function, path: "aggregate.1.function"}, &1)
              )
+    end
+
+    test "continues to validate legacy graph axis intent" do
+      validation =
+        QueryContract.validate_intent(query_contract_document(), %{
+          "view_mode" => "graph",
+          "x_axis" => ["status"],
+          "y_axis" => [%{"field" => "customer_id", "function" => "sum"}]
+        })
+
+      assert validation[:valid?]
     end
 
     test "rejects invalid view modes" do

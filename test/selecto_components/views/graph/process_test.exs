@@ -35,37 +35,34 @@ defmodule SelectoComponents.Views.Graph.ProcessTest do
 
       state = Process.param_to_state(params, :graph)
 
-      assert state.chart_type == "bar"
-      assert state.options == %{"title" => "Films by Category"}
-      assert length(state.x_axis) == 2
-      assert length(state.y_axis) == 1
-      assert length(state.series) == 1
-      assert length(state.color_by) == 1
+      assert state.visual.type == "bar"
+      assert state.visual.options == %{"title" => "Films by Category"}
+      assert length(state.group_by) == 3
+      assert length(state.aggregate) == 1
 
-      # Check x_axis fields are properly ordered by index
-      [first_x, second_x] = state.x_axis
-      assert elem(first_x, 1) == "category"
-      assert elem(second_x, 1) == "release_year"
-      assert get_in(elem(first_x, 2), ["linked_to_next"]) == "true"
+      [category, release_year, rating] = state.group_by
+      assert elem(category, 1) == "category"
+      assert elem(release_year, 1) == "release_year"
+      assert elem(rating, 1) == "rating"
+      assert get_in(elem(category, 2), ["linked_to_next"]) == "true"
+      assert elem(hd(state.aggregate), 2)["format"] == "count"
     end
 
     test "handles empty parameters gracefully" do
       params = %{}
       state = Process.param_to_state(params, :graph)
 
-      assert state.chart_type == "bar"
-      assert state.options == %{}
-      assert state.x_axis == []
-      assert state.y_axis == []
-      assert state.series == []
-      assert state.color_by == []
+      assert state.visual.type == "auto"
+      assert state.visual.options == %{}
+      assert state.group_by == []
+      assert state.aggregate == []
     end
 
     test "defaults chart_type when not provided" do
       params = %{"x_axis" => %{}}
       state = Process.param_to_state(params, :graph)
 
-      assert state.chart_type == "bar"
+      assert state.visual.type == "auto"
     end
   end
 
@@ -83,9 +80,10 @@ defmodule SelectoComponents.Views.Graph.ProcessTest do
 
       state = Process.initial_state(selecto, :graph)
 
-      assert state.chart_type == "line"
-      assert state.options == %{"title" => "Default Chart"}
-      # Note: x_axis and y_axis will be processed by build_initial_state
+      assert state.visual.type == "line"
+      assert state.visual.options == %{"title" => "Default Chart"}
+      assert length(state.group_by) == 1
+      assert length(state.aggregate) == 1
     end
 
     test "uses defaults when domain configuration is missing" do
@@ -94,8 +92,8 @@ defmodule SelectoComponents.Views.Graph.ProcessTest do
 
       state = Process.initial_state(selecto, :graph)
 
-      assert state.chart_type == "bar"
-      assert state.options == %{}
+      assert state.visual.type == "auto"
+      assert state.visual.options == %{}
     end
   end
 
@@ -109,6 +107,48 @@ defmodule SelectoComponents.Views.Graph.ProcessTest do
       }
 
       {:ok, columns: columns}
+    end
+
+    test "delegates the analytical query to Aggregate.Process and only adds encoding" do
+      selecto = analytical_selecto()
+
+      columns =
+        selecto
+        |> Selecto.columns()
+        |> Map.new(fn {key, column} ->
+          {key, column |> Map.put(:field, column.name) |> Map.put(:colid, key)}
+        end)
+
+      params = %{
+        "graph_group_by" => %{
+          "g1" => %{
+            "uuid" => "g1",
+            "field" => "booked_at",
+            "index" => "0",
+            "format" => "month"
+          },
+          "g2" => %{"uuid" => "g2", "field" => "category", "index" => "1"}
+        },
+        "graph_aggregate" => %{
+          "a1" => %{
+            "uuid" => "a1",
+            "field" => "hours",
+            "index" => "0",
+            "format" => "sum"
+          }
+        },
+        "graph_chart_type" => "auto"
+      }
+
+      {view_set, _meta} = Process.view(nil, params, columns, [], selecto)
+
+      assert length(view_set.groups) == 2
+      assert length(view_set.aggregates) == 1
+      assert view_set.selected == Enum.map(view_set.groups, &elem(&1, 1)) ++ view_set.aggregates
+      assert view_set.x_axis_groups == Enum.take(view_set.groups, 1)
+      assert view_set.series_groups == Enum.drop(view_set.groups, 1)
+      assert view_set.chart_type == "line"
+      assert [%{field: "hours", function: :sum}] = view_set.graph_series_defs
     end
 
     test "generates view structure for bar chart with x-axis and y-axis", %{columns: columns} do
@@ -558,6 +598,30 @@ defmodule SelectoComponents.Views.Graph.ProcessTest do
       assert elem(first_agg, 1) == {:count, "film_count"}
       assert elem(second_agg, 1) == {:avg, "film_count"}
     end
+  end
+
+  defp analytical_selecto do
+    Selecto.configure(
+      %{
+        name: "AnalyticalGraph",
+        source: %{
+          source_table: "bookings",
+          primary_key: :id,
+          fields: [:id, :booked_at, :category, :hours],
+          redact_fields: [],
+          columns: %{
+            id: %{type: :integer},
+            booked_at: %{type: :utc_datetime},
+            category: %{type: :string},
+            hours: %{type: :integer}
+          },
+          associations: %{}
+        },
+        schemas: %{},
+        joins: %{}
+      },
+      nil
+    )
   end
 
   describe "group_by_fields/3" do

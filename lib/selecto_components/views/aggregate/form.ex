@@ -27,10 +27,14 @@ defmodule SelectoComponents.Views.Aggregate.Form do
 
   @impl true
   def render(assigns) do
-    aggregate_view =
+    state_view_key = assigns[:state_view_key] || :aggregate
+
+    analytic_view =
       assigns.view_config
       |> Map.get(:views, %{})
-      |> Map.get(:aggregate, Map.get(Map.get(assigns.view_config, :views, %{}), "aggregate", %{}))
+      |> then(fn views ->
+        Map.get(views, state_view_key, Map.get(views, to_string(state_view_key), %{}))
+      end)
 
     aggregate_per_page = get_aggregate_per_page(assigns.view_config)
     aggregate_grid = get_aggregate_grid(assigns.view_config)
@@ -38,17 +42,23 @@ defmodule SelectoComponents.Views.Aggregate.Form do
     aggregate_grid_color_scale = get_aggregate_grid_color_scale(assigns.view_config)
 
     group_by_items =
-      Map.get(aggregate_view, :group_by, Map.get(aggregate_view, "group_by", []))
+      Map.get(analytic_view, :group_by, Map.get(analytic_view, "group_by", []))
 
     aggregate_items =
-      Map.get(aggregate_view, :aggregate, Map.get(aggregate_view, "aggregate", []))
+      Map.get(analytic_view, :aggregate, Map.get(analytic_view, "aggregate", []))
 
     assigns =
       assigns
       |> assign_new(:theme, fn -> Theme.default_theme(:light) end)
       |> assign_new(:graph_view_available?, fn -> false end)
+      |> assign_new(:query_only, fn -> false end)
+      |> assign_new(:group_param, fn -> "group_by" end)
+      |> assign_new(:aggregate_param, fn -> "aggregate" end)
       |> assign(
-        aggregate_view: aggregate_view,
+        analytic_view: analytic_view,
+        state_view_key: state_view_key,
+        group_picker_id: picker_id(state_view_key, :group_by),
+        aggregate_picker_id: picker_id(state_view_key, :aggregate),
         group_by_items: group_by_items,
         aggregate_items: aggregate_items,
         aggregate_per_page: aggregate_per_page,
@@ -60,8 +70,8 @@ defmodule SelectoComponents.Views.Aggregate.Form do
       )
 
     ~H"""
-    <div id={"aggregate-form-#{@id}"}>
-      <div class={Theme.slot(@theme, :panel) <> " mb-3 px-3 py-3"} style="background: var(--sc-surface-bg-alt);">
+    <div id={"analytic-form-#{@id}"}>
+      <div :if={!@query_only} class={Theme.slot(@theme, :panel) <> " mb-3 px-3 py-3"} style="background: var(--sc-surface-bg-alt);">
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <label for="aggregate_per_page" class="block text-sm">
             <span class="text-xs font-medium" style="color: var(--sc-text-secondary);">
@@ -164,7 +174,7 @@ defmodule SelectoComponents.Views.Aggregate.Form do
         >
           <.live_component
             module={SelectoComponents.Components.ListPicker}
-            id="group_by"
+            id={@group_picker_id}
             theme={@theme}
             fieldname="group_by"
             view={@view}
@@ -178,8 +188,8 @@ defmodule SelectoComponents.Views.Aggregate.Form do
           <span :if={present_summary?(format_summary)} class="truncate text-sm font-normal text-base-content/60">{format_summary}</span>
         </:item_summary>
         <:item_form :let={{id, item, config, index}}>
-          <input name={"group_by[#{id}][field]"} type="hidden" value={item} />
-          <input name={"group_by[#{id}][index]"} type="hidden" value={index} />
+          <input name={"#{@group_param}[#{id}][field]"} type="hidden" value={item} />
+          <input name={"#{@group_param}[#{id}][index]"} type="hidden" value={index} />
           <.live_component
             module={SelectoComponents.Views.Aggregate.GroupByConfig}
             id={id}
@@ -188,7 +198,7 @@ defmodule SelectoComponents.Views.Aggregate.Form do
             item={item}
             columns={@columns}
             fieldname="group_by"
-            prefix={ "group_by[#{id}]" }
+            prefix={ "#{@group_param}[#{id}]" }
             config={config}
             theme={@theme}
           />
@@ -203,11 +213,11 @@ defmodule SelectoComponents.Views.Aggregate.Form do
             aria-label="Link this group-by to the next one"
           >
             <span class="h-px w-4 transition" style="background: var(--sc-surface-border);"></span>
-            <input type="hidden" name={"group_by[#{id}][linked_to_next]"} value="false" />
+            <input type="hidden" name={"#{@group_param}[#{id}][linked_to_next]"} value="false" />
             <input
               id={toggle_id}
               type="checkbox"
-              name={"group_by[#{id}][linked_to_next]"}
+              name={"#{@group_param}[#{id}][linked_to_next]"}
               value="true"
               checked={linked?}
               class="h-3.5 w-3.5 cursor-pointer rounded-full border transition hover:scale-110"
@@ -243,7 +253,7 @@ defmodule SelectoComponents.Views.Aggregate.Form do
         >
           <.live_component
             module={SelectoComponents.Components.ListPicker}
-            id="aggregate"
+            id={@aggregate_picker_id}
             theme={@theme}
             fieldname="aggregate"
             view={@view}
@@ -256,8 +266,8 @@ defmodule SelectoComponents.Views.Aggregate.Form do
           <span class="truncate text-sm font-normal text-base-content/60">{aggregate_format_summary(col, config)}</span>
         </:item_summary>
         <:item_form :let={{id, item, config, index}}>
-          <input name={"aggregate[#{id}][field]"} type="hidden" value={item} />
-          <input name={"aggregate[#{id}][index]"} type="hidden" value={index} />
+          <input name={"#{@aggregate_param}[#{id}][field]"} type="hidden" value={item} />
+          <input name={"#{@aggregate_param}[#{id}][index]"} type="hidden" value={index} />
           <.live_component
             module={SelectoComponents.Views.Aggregate.Aggregate.Config}
             id={id}
@@ -266,7 +276,7 @@ defmodule SelectoComponents.Views.Aggregate.Form do
             item={item}
             columns={@columns}
             fieldname="aggregate"
-            prefix={ "aggregate[#{id}]" }
+            prefix={ "#{@aggregate_param}[#{id}]" }
             config={config}
             theme={@theme}
           />
@@ -281,6 +291,9 @@ defmodule SelectoComponents.Views.Aggregate.Form do
   defp aggregate_selectable_columns(columns) do
     Enum.reject(columns, fn {_field, _name, metadata} -> component_or_link_column?(metadata) end)
   end
+
+  defp picker_id(:graph, list), do: "graph_#{list}"
+  defp picker_id(_view, list), do: to_string(list)
 
   defp component_or_link_column?(metadata) when metadata in [:component, :link], do: true
 

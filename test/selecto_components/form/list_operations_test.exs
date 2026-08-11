@@ -250,8 +250,8 @@ defmodule SelectoComponents.Form.ListOperationsTest do
       "aggregate_grid" => "true",
       "aggregate_grid_colorize" => "true",
       "aggregate_grid_color_scale" => "log",
-      "chart_type" => "line",
-      "x_axis" => %{
+      "graph_chart_type" => "line",
+      "graph_group_by" => %{
         "k0" => %{
           "field" => "status",
           "index" => "0",
@@ -265,24 +265,18 @@ defmodule SelectoComponents.Form.ListOperationsTest do
           "format" => "default"
         }
       },
-      "y_axis" => %{
+      "graph_aggregate" => %{
         "k0" => %{
           "field" => "id",
           "index" => "0",
           "uuid" => "graph-y-1",
-          "function" => "count",
-          "axis" => "left"
+          "format" => "count"
         }
       },
-      "series" => %{
-        "k0" => %{
-          "field" => "priority",
-          "index" => "0",
-          "uuid" => "graph-series-1",
-          "format" => "default"
-        }
-      },
-      "options" => %{
+      "graph_x" => "graph-x-1",
+      "graph_series" => ["graph-x-2"],
+      "graph_stack" => "auto",
+      "graph_options" => %{
         "title" => "Priority trend",
         "legend_position" => "bottom"
       }
@@ -431,23 +425,24 @@ defmodule SelectoComponents.Form.ListOperationsTest do
   test "graph list picker add hydrates current form state before mutating graph config" do
     {:noreply, updated} =
       TestLive.handle_info(
-        {:list_picker_add, graph_form_state_query(), "graph", "series", "status"},
+        {:list_picker_add, graph_form_state_query(), "graph", "group_by", "id"},
         base_socket()
       )
 
     assert_preserved_cross_tab_state(updated)
     assert updated.assigns.view_config.view_mode == "graph"
-    assert updated.assigns.view_config.views.graph.chart_type == "line"
+    assert updated.assigns.view_config.views.graph.visual.type == "line"
 
-    assert updated.assigns.view_config.views.graph.options == %{
+    assert updated.assigns.view_config.views.graph.visual.options == %{
              "legend_position" => "bottom",
              "title" => "Priority trend"
            }
 
     assert [
-             {"graph-series-1", "priority", _existing_config},
-             {new_uuid, "status", %{}}
-           ] = updated.assigns.view_config.views.graph.series
+             {"graph-x-1", "status", _status_config},
+             {"graph-x-2", "priority", _priority_config},
+             {new_uuid, "id", %{}}
+           ] = updated.assigns.view_config.views.graph.group_by
 
     assert is_binary(new_uuid)
     assert new_uuid != ""
@@ -456,24 +451,22 @@ defmodule SelectoComponents.Form.ListOperationsTest do
   test "graph list picker remove hydrates current form state before mutating graph config" do
     {:noreply, updated} =
       TestLive.handle_info(
-        {:list_picker_remove, graph_form_state_query(), "graph", "y_axis", "graph-y-1"},
+        {:list_picker_remove, graph_form_state_query(), "graph", "aggregate", "graph-y-1"},
         base_socket()
       )
 
     assert_preserved_cross_tab_state(updated)
     assert updated.assigns.view_config.view_mode == "graph"
-    assert updated.assigns.view_config.views.graph.y_axis == []
+    assert updated.assigns.view_config.views.graph.aggregate == []
 
     assert [{"graph-x-1", "status", _}, {"graph-x-2", "priority", _}] =
-             updated.assigns.view_config.views.graph.x_axis
-
-    assert [{"graph-series-1", "priority", _}] = updated.assigns.view_config.views.graph.series
+             updated.assigns.view_config.views.graph.group_by
   end
 
   test "graph list picker reorder hydrates current form state before mutating graph config" do
     {:noreply, updated} =
       TestLive.handle_info(
-        {:list_picker_reorder, graph_form_state_query(), "graph", "x_axis", "graph-x-2",
+        {:list_picker_reorder, graph_form_state_query(), "graph", "group_by", "graph-x-2",
          "graph-x-1"},
         base_socket()
       )
@@ -484,7 +477,7 @@ defmodule SelectoComponents.Form.ListOperationsTest do
     assert [
              {"graph-x-2", "priority", _priority_config},
              {"graph-x-1", "status", _status_config}
-           ] = updated.assigns.view_config.views.graph.x_axis
+           ] = updated.assigns.view_config.views.graph.group_by
   end
 
   test "list picker move keeps boundary items in place" do

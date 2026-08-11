@@ -374,6 +374,40 @@ defmodule SelectoComponents.Views.Graph.ComponentTest do
       [dataset] = chart_data.datasets
       assert dataset.label == "Average Temperature (F)"
     end
+
+    test "prepares real scatter points from the first two aggregate measures" do
+      assigns = %{
+        selecto: %{
+          set: %{
+            groups: [{%{colid: :category}, {:field, :category, "Category"}}],
+            x_axis_groups: [{%{colid: :category}, {:field, :category, "Category"}}],
+            aggregates: [
+              {:field, {:sum, "hours"}, "Hours"},
+              {:field, {:avg, "cost"}, "Average Cost"}
+            ],
+            graph_series_defs: [
+              %{alias: "Hours", axis: "left", series_type: "auto", color: nil},
+              %{alias: "Average Cost", axis: "left", series_type: "auto", color: nil}
+            ],
+            chart_type: "scatter"
+          }
+        }
+      }
+
+      chart_data =
+        Component.prepare_chart_data(
+          assigns,
+          [["Build", 12, 120.5], ["Test", 7, 91.0]],
+          ["Category", "Hours", "Average Cost"]
+        )
+
+      assert [%{label: "Hours vs Average Cost", data: points}] = chart_data.datasets
+
+      assert points == [
+               %{x: 12, y: 120.5, label: "Build"},
+               %{x: 7, y: 91.0, label: "Test"}
+             ]
+    end
   end
 
   describe "prepare_chart_options/1" do
@@ -426,6 +460,22 @@ defmodule SelectoComponents.Views.Graph.ComponentTest do
       options = Component.prepare_chart_options(assigns)
 
       refute Map.has_key?(options, :scales)
+    end
+
+    test "enables Chart.js stacking from visual layout" do
+      options =
+        Component.prepare_chart_options(%{
+          selecto: %{
+            set: %{
+              chart_type: "bar",
+              aggregates: [],
+              graph_options: %{"stack" => "stacked"}
+            }
+          }
+        })
+
+      assert options.scales.x.stacked == true
+      assert options.scales.y.stacked == true
     end
   end
 

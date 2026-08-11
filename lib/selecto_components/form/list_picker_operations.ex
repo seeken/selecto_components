@@ -203,5 +203,8 @@ defmodule SelectoComponents.Form.ListPickerOperations do
        when view in [:graph, :timeseries, :chart] and list in [:x_axis, :y_axis, :series],
        do: "#{view}_#{list}"
 
+  defp list_picker_component_id(:graph, list) when list in [:group_by, :aggregate],
+    do: "graph_#{list}"
+
   defp list_picker_component_id(_view, list), do: Atom.to_string(list)
 end

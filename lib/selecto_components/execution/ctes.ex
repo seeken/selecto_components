@@ -5,7 +5,9 @@ defmodule SelectoComponents.Execution.CTEs do
 
   alias SelectoComponents.Form.ColumnCatalog
 
-  @field_param_sections ~w(selected order_by group_by aggregate x_axis y_axis series)
+  @field_param_sections ~w(
+    selected order_by group_by aggregate graph_group_by graph_aggregate x_axis y_axis series
+  )
   @view_state_field_keys [:selected, :order_by, :group_by, :aggregate, :x_axis, :y_axis, :series]
 
   def sync_view_config(view_config, %Selecto{} = selecto) when is_map(view_config) do

@@ -925,21 +925,51 @@ defmodule SelectoComponents.Views.Graph.Component do
   defp linked_to_next?(_coldef), do: false
 
   defp prepare_scatter_data(
-         _results,
+         results,
          _aliases,
          _x_axis_groups,
-         _metric_defs,
+         metric_defs,
          _series_groups,
          _color_by_groups,
-         _all_group_by,
-         _presentation_context
+         all_group_by,
+         presentation_context
        ) do
-    # Simplified scatter data
+    group_count = length(all_group_by)
+    group_defs = build_group_defs(all_group_by, 0)
+
+    points =
+      results
+      |> filter_rollup_rows(group_count)
+      |> Enum.flat_map(fn row ->
+        case {Enum.at(row, group_count), Enum.at(row, group_count + 1)} do
+          {x, y} when is_number(x) and is_number(y) ->
+            label =
+              group_defs
+              |> Enum.map(fn group_def ->
+                row
+                |> Enum.at(Param.integer(group_def.group_index))
+                |> format_chart_label(group_def.col, presentation_context)
+              end)
+              |> Enum.join(" / ")
+
+            [%{x: x, y: y, label: label}]
+
+          _ ->
+            []
+        end
+      end)
+
+    label =
+      metric_defs
+      |> Enum.take(2)
+      |> Enum.map(&format_metric_label(&1, presentation_context))
+      |> Enum.join(" vs ")
+
     %{
       datasets: [
         %{
-          label: "Scatter Data",
-          data: [%{x: 0, y: 0}],
+          label: if(label == "", do: "Scatter Data", else: label),
+          data: points,
           backgroundColor: generate_color(0, 0.7),
           borderColor: generate_color(0, 1.0)
         }
@@ -964,6 +994,7 @@ defmodule SelectoComponents.Views.Graph.Component do
 
     graph_options = selecto_set[:graph_options] || %{}
     uses_right_axis? = Enum.any?(metric_defs, &(&1.axis == "right"))
+    stacked? = Map.get(graph_options, "stack") == "stacked"
 
     base_options = %{
       title: Map.get(graph_options, "title"),
@@ -982,14 +1013,16 @@ defmodule SelectoComponents.Views.Graph.Component do
         x: %{
           title: %{display: true, text: Map.get(graph_options, "x_axis_label", "")},
           beginAtZero: false,
-          grid: %{display: truthy?(Map.get(graph_options, "show_grid"), true)}
+          grid: %{display: truthy?(Map.get(graph_options, "show_grid"), true)},
+          stacked: stacked?
         },
         y: %{
           type: "linear",
           position: "left",
           title: %{display: true, text: Map.get(graph_options, "y_axis_label", "")},
           beginAtZero: true,
-          grid: %{display: truthy?(Map.get(graph_options, "show_grid"), true)}
+          grid: %{display: truthy?(Map.get(graph_options, "show_grid"), true)},
+          stacked: stacked?
         }
       }
 

@@ -267,21 +267,21 @@ defmodule SelectoComponents.Keyboard.Shortcuts do
     %{
       id: "focus_x_axis_picker",
       group: "Field Pickers",
-      label: "Focus Graph X Axis fields",
+      label: "Focus Graph Group By fields",
       keys: ["f x"],
       view: "graph"
     },
     %{
       id: "focus_y_axis_picker",
       group: "Field Pickers",
-      label: "Focus Graph Y Axis fields",
+      label: "Focus Graph Aggregate fields",
       keys: ["f y"],
       view: "graph"
     },
     %{
       id: "focus_series_picker",
       group: "Field Pickers",
-      label: "Focus Graph Series fields",
+      label: "Focus Graph series groupings",
       keys: ["f r"],
       view: "graph"
     },

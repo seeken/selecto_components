@@ -153,8 +153,8 @@ defmodule SelectoComponents.QueryContract.IntentValidator do
   end
 
   defp validate_mode_intent("graph", intent, indexes) do
-    validate_groupable_fields(intent, indexes, [:x_axis], "x_axis") ++
-      validate_metrics(intent, indexes, [:y_axis, :metrics]) ++
+    validate_groupable_fields(intent, indexes, [:group_by, :x_axis], "group_by") ++
+      validate_metrics(intent, indexes, [:aggregate, :metrics, :y_axis]) ++
       validate_groupable_fields(intent, indexes, [:series], "series") ++
       validate_filters(intent, indexes)
   end

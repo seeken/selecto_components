@@ -180,9 +180,22 @@ defmodule SelectoComponents.Views.Graph.DrillDown do
   end
 
   defp extract_graph_config_field(graph_config) do
-    case graph_config[:x_axis] || [] do
-      [{_id, field, _config} | _] when is_binary(field) -> field
-      [{_id, field, _config} | _] -> inspect(field)
+    graph_state = SelectoComponents.Views.Graph.Process.normalize_state(graph_config)
+    groups = Map.get(graph_state, :group_by, [])
+    x_id = get_in(graph_state, [:visual, :x])
+
+    x_item =
+      Enum.find(groups, fn
+        {id, _field, _config} -> id == x_id
+        [id, _field, _config] -> id == x_id
+        _ -> false
+      end) || List.first(groups)
+
+    case x_item do
+      {_id, field, _config} when is_binary(field) -> field
+      [_id, field, _config] when is_binary(field) -> field
+      {_id, field, _config} -> inspect(field)
+      [_id, field, _config] -> inspect(field)
       _ -> "id"
     end
   end

@@ -5,6 +5,7 @@ defmodule SelectoComponents.Views.Aggregate.Process do
   alias SelectoComponents.SafeAtom
   alias SelectoComponents.SqlSafety
   alias SelectoComponents.Views.Aggregate.Options
+  alias SelectoComponents.Views.Analytic.Defaults
 
   def param_to_state(params, _v) do
     %{
@@ -21,10 +22,10 @@ defmodule SelectoComponents.Views.Aggregate.Process do
   def initial_state(selecto, _v) do
     %{
       aggregate:
-        Map.get(Selecto.domain(selecto), :default_aggregate, [])
+        Defaults.aggregate(selecto)
         |> SelectoComponents.Helpers.build_initial_state(),
       group_by:
-        Map.get(Selecto.domain(selecto), :default_group_by, [])
+        Defaults.group_by(selecto)
         |> SelectoComponents.Helpers.build_initial_state(),
       per_page: Options.default_per_page(),
       grid: false,

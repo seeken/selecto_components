@@ -361,7 +361,7 @@ defmodule SelectoComponents.Form.ParamsStateTest do
     assert params["aggregate_per_page"] == "300"
   end
 
-  test "view_config_to_params preserves graph chart type and display options" do
+  test "view_config_to_params migrates legacy graph state to analytical query params" do
     view_config = %{
       view_mode: "graph",
       filters: [],
@@ -383,11 +383,12 @@ defmodule SelectoComponents.Form.ParamsStateTest do
 
     params = ParamsState.view_config_to_params(view_config)
 
-    assert params["chart_type"] == "line"
-    assert params["options"]["title"] == "Monthly utilization"
-    assert params["options"]["x_axis_label"] == "Month"
-    assert params["options"]["y_axis_label"] == "Hours"
-    assert params["color_by"]["k0"]["field"] == "site"
+    assert params["graph_chart_type"] == "line"
+    assert params["graph_options"]["title"] == "Monthly utilization"
+    assert params["graph_options"]["x_axis_label"] == "Month"
+    assert params["graph_options"]["y_axis_label"] == "Hours"
+    assert params["graph_group_by"]["k0"]["field"] == "reservation_month"
+    assert params["graph_aggregate"]["k0"]["field"] == "reservation_hours"
   end
 
   test "convert_saved_config_to_full_params restores aggregate grid color settings" do
@@ -838,8 +839,8 @@ defmodule SelectoComponents.Form.ParamsStateTest do
              grid_color_scale: "log"
            }
 
-    assert updated.assigns.view_config.views.graph.chart_type == "line"
-    assert updated.assigns.view_config.views.graph.options == %{"title" => "Revenue"}
+    assert updated.assigns.view_config.views.graph.visual.type == "line"
+    assert updated.assigns.view_config.views.graph.visual.options == %{"title" => "Revenue"}
   end
 
   test "form_params_to_state preserves existing prevent_denormalization when submit omits it" do
@@ -1108,11 +1109,11 @@ defmodule SelectoComponents.Form.ParamsStateTest do
 
     updated = ParamsState.form_params_to_state(params, socket)
 
-    assert updated.assigns.view_config.views.graph.y_axis == [
+    assert updated.assigns.view_config.views.graph.aggregate == [
              {"y1", "id",
-              %{"field" => "id", "function" => "count", "index" => "0", "uuid" => "y1"}},
+              %{"field" => "id", "format" => "count", "index" => "0", "uuid" => "y1"}},
              {"y2", "amount",
-              %{"field" => "amount", "function" => "sum", "index" => "1", "uuid" => "y2"}}
+              %{"field" => "amount", "format" => "sum", "index" => "1", "uuid" => "y2"}}
            ]
   end
 
@@ -1156,11 +1157,11 @@ defmodule SelectoComponents.Form.ParamsStateTest do
 
     updated = ParamsState.form_params_to_state(stale_params, socket)
 
-    assert updated.assigns.view_config.views.graph.y_axis == [
+    assert updated.assigns.view_config.views.graph.aggregate == [
              {"y1", "id",
-              %{"field" => "id", "function" => "count", "index" => "0", "uuid" => "y1"}},
+              %{"field" => "id", "format" => "count", "index" => "0", "uuid" => "y1"}},
              {"y2", "amount",
-              %{"field" => "amount", "function" => "sum", "index" => "1", "uuid" => "y2"}}
+              %{"field" => "amount", "format" => "sum", "index" => "1", "uuid" => "y2"}}
            ]
   end
 
@@ -1298,8 +1299,13 @@ defmodule SelectoComponents.Form.ParamsStateTest do
 
     assert saved["views"]["detail"]["row_click_action"] == "workspace_spotlight"
     assert saved["views"]["aggregate"]["grid"] == true
-    assert saved["views"]["graph"]["chart_type"] == "line"
-    assert saved["views"]["graph"]["color_by"] == [["c1", "status", %{}]]
+    assert saved["views"]["graph"]["visual"]["type"] == "line"
+    assert saved["views"]["graph"]["visual"]["series"] == ["s1", "c1"]
+
+    assert Enum.map(saved["views"]["graph"]["group_by"], &Enum.at(&1, 1)) == [
+             "status",
+             "priority"
+           ]
   end
 
   test "copy_aggregate_to_graph maps aggregate grouping and metrics into graph config" do
@@ -1335,19 +1341,18 @@ defmodule SelectoComponents.Form.ParamsStateTest do
     assert updated.view_mode == "graph"
     assert updated.filters == view_config.filters
 
-    assert updated.views.graph.x_axis == [
+    assert updated.views.graph.group_by == [
              {"g1", "event_name", %{"alias" => "Event", "format" => "default"}},
              {"g2", "event_start", %{"alias" => "Year", "format" => "year"}}
            ]
 
-    assert updated.views.graph.y_axis == [
-             {"a1", "atnd_id", %{"alias" => "Attendees", "function" => "count"}}
+    assert updated.views.graph.aggregate == [
+             {"a1", "atnd_id", %{"alias" => "Attendees", "format" => "count"}}
            ]
 
-    assert updated.views.graph.series == [{"s1", "event_year", %{}}]
-    assert updated.views.graph.color_by == [{"c1", "event_name", %{}}]
-    assert updated.views.graph.chart_type == "line"
-    assert updated.views.graph.options == %{"title" => "Registration Pace"}
+    assert updated.views.graph.visual.type == "line"
+    assert updated.views.graph.visual.series == ["s1", "c1"]
+    assert updated.views.graph.visual.options == %{"title" => "Registration Pace"}
   end
 
   test "saved_params_to_state restores all view configurations" do
@@ -1407,16 +1412,13 @@ defmodule SelectoComponents.Form.ParamsStateTest do
              "workspace_spotlight"
 
     assert get_in(updated.assigns.view_config, [:views, :aggregate, "grid"]) == true
-    assert get_in(updated.assigns.view_config, [:views, :graph, "chart_type"]) == "line"
-
-    assert get_in(updated.assigns.view_config, [:views, :graph, "color_by"]) == [
-             ["c1", "status", %{}]
-           ]
+    assert get_in(updated.assigns.view_config, [:views, :graph, :visual, :type]) == "line"
+    assert get_in(updated.assigns.view_config, [:views, :graph, :visual, :series]) == ["s1", "c1"]
 
     detail_params = ParamsState.view_config_to_params(updated.assigns.view_config)
     assert detail_params["row_click_action"] == "workspace_spotlight"
     assert detail_params["filters"]["k0"]["filter"] == "status"
-    assert detail_params["color_by"]["k0"]["field"] == "status"
+    assert detail_params["graph_group_by"]["k0"]["field"] == "status"
   end
 
   test "saved_params_to_state normalizes saved detail prevent_denormalization strings" do

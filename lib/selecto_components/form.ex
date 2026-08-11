@@ -594,13 +594,13 @@ defmodule SelectoComponents.Form do
                 this.focusFieldPicker("aggregate", "aggregate");
                 break;
               case "focus_x_axis_picker":
-                this.focusFieldPicker("graph", "x_axis");
+                this.focusFieldPicker("graph", "group_by");
                 break;
               case "focus_y_axis_picker":
-                this.focusFieldPicker("graph", "y_axis");
+                this.focusFieldPicker("graph", "aggregate");
                 break;
               case "focus_series_picker":
-                this.focusFieldPicker("graph", "series");
+                this.focusFieldPicker("graph", "group_by");
                 break;
               case "export_tab":
                 this.switchMainTab("export");

@@ -56,6 +56,17 @@ defmodule SelectoComponents.Session.URL do
 
   defp view_data_to_params(_view, nil), do: %{}
 
+  defp view_data_to_params(:graph, view_data) when is_map(view_data) do
+    view_data
+    |> SelectoComponents.Views.Graph.Process.normalize_state()
+    |> Enum.reduce(%{}, fn
+      {:group_by, items}, acc -> Map.put(acc, "graph_group_by", view_items_to_params(items))
+      {:aggregate, items}, acc -> Map.put(acc, "graph_aggregate", view_items_to_params(items))
+      {:visual, visual}, acc -> Map.merge(acc, graph_visual_to_params(visual))
+      {_key, _value}, acc -> acc
+    end)
+  end
+
   defp view_data_to_params(view, view_data) when is_map(view_data) do
     Enum.reduce(view_data, %{}, fn {list_name, items}, acc ->
       cond do
@@ -98,6 +109,19 @@ defmodule SelectoComponents.Session.URL do
         acc
     end)
   end
+
+  defp graph_visual_to_params(visual) when is_map(visual) do
+    %{
+      "graph_chart_type" => get_map_value(visual, :type, "auto"),
+      "graph_x" => get_map_value(visual, :x),
+      "graph_series" => get_map_value(visual, :series, []),
+      "graph_stack" => get_map_value(visual, :stack, "auto"),
+      "graph_measure_overrides" => get_map_value(visual, :measure_overrides, %{}),
+      "graph_options" => get_map_value(visual, :options, %{})
+    }
+  end
+
+  defp graph_visual_to_params(_visual), do: %{}
 
   defp ctes_to_params(ctes) when is_list(ctes) do
     ctes
@@ -204,14 +228,6 @@ defmodule SelectoComponents.Session.URL do
        when key in [:row_click_action, "row_click_action"],
        do: maybe_put_param(acc, "row_click_action", normalize_optional_scalar(value))
 
-  defp merge_scalar_view_param(acc, :graph, key, value)
-       when key in [:chart_type, "chart_type"],
-       do: maybe_put_param(acc, "chart_type", normalize_optional_scalar(value))
-
-  defp merge_scalar_view_param(acc, :graph, key, value)
-       when key in [:options, "options"] and is_map(value),
-       do: Map.put(acc, "options", value)
-
   defp merge_scalar_view_param(acc, :map, key, value) when key in [:center, "center"],
     do: maybe_put_center_params(acc, value)
 
@@ -282,7 +298,9 @@ defmodule SelectoComponents.Session.URL do
       "x_axis",
       "y_axis",
       "series",
-      "color_by"
+      "color_by",
+      "graph_group_by",
+      "graph_aggregate"
     ]
 
   defp compact_param_key(index) when is_integer(index), do: "k" <> Integer.to_string(index, 36)

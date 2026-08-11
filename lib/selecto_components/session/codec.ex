@@ -223,7 +223,27 @@ defmodule SelectoComponents.Session.Codec do
 
   defp merge_filter_value(_existing_value, submitted_value), do: submitted_value
 
-  defp merge_submitted_view_state(view, submitted_view, existing_view, params) do
+  defp merge_submitted_view_state(:graph, submitted_view, existing_view, params)
+       when is_map(params) do
+    legacy_params? =
+      Enum.any?(
+        ["x_axis", "y_axis", "series", "color_by", "chart_type", "options"],
+        &Map.has_key?(params, &1)
+      ) and not Map.has_key?(params, "graph_group_by")
+
+    if legacy_params? do
+      existing_view
+      |> SelectoComponents.Views.Graph.Process.normalize_state()
+      |> Map.merge(submitted_view)
+    else
+      merge_submitted_view_state_default(:graph, submitted_view, existing_view, params)
+    end
+  end
+
+  defp merge_submitted_view_state(view, submitted_view, existing_view, params),
+    do: merge_submitted_view_state_default(view, submitted_view, existing_view, params)
+
+  defp merge_submitted_view_state_default(view, submitted_view, existing_view, params) do
     state_keys =
       submitted_view_specs(view) |> Enum.map(fn {_type, _param_key, state_key} -> state_key end)
 
@@ -379,12 +399,9 @@ defmodule SelectoComponents.Session.Codec do
 
   defp submitted_view_specs(:graph) do
     [
-      {:list, "x_axis", :x_axis},
-      {:list, "y_axis", :y_axis},
-      {:list, "series", :series},
-      {:list, "color_by", :color_by},
-      {:scalar, "chart_type", :chart_type},
-      {:scalar, "options", :options}
+      {:list, "graph_group_by", :group_by},
+      {:list, "graph_aggregate", :aggregate},
+      {:scalar, "graph_chart_type", :visual}
     ]
   end
 
@@ -412,7 +429,22 @@ defmodule SelectoComponents.Session.Codec do
     ]
 
   defp view_param_keys(:graph),
-    do: ["x_axis", "y_axis", "series", "color_by", "chart_type", "options"]
+    do: [
+      "graph_group_by",
+      "graph_aggregate",
+      "graph_chart_type",
+      "graph_x",
+      "graph_series",
+      "graph_stack",
+      "graph_measure_overrides",
+      "graph_options",
+      "x_axis",
+      "y_axis",
+      "series",
+      "color_by",
+      "chart_type",
+      "options"
+    ]
 
   defp view_param_keys(:map),
     do: [
@@ -455,7 +487,14 @@ defmodule SelectoComponents.Session.Codec do
   end
 
   defp normalize_saved_views_for_storage(views) when is_map(views) do
-    Map.new(views, fn {key, value} -> {to_string(key), normalize_saved_term(value)} end)
+    Map.new(views, fn {key, value} ->
+      value =
+        if to_string(key) == "graph",
+          do: SelectoComponents.Views.Graph.Process.normalize_state(value),
+          else: value
+
+      {to_string(key), normalize_saved_term(value)}
+    end)
   end
 
   defp normalize_saved_views_for_storage(_views), do: %{}
@@ -513,6 +552,10 @@ defmodule SelectoComponents.Session.Codec do
 
   defp normalize_restored_view(saved_view, :detail) when is_map(saved_view) do
     normalize_saved_boolean(saved_view, :prevent_denormalization, true)
+  end
+
+  defp normalize_restored_view(saved_view, :graph) when is_map(saved_view) do
+    SelectoComponents.Views.Graph.Process.normalize_state(saved_view)
   end
 
   defp normalize_restored_view(saved_view, _view), do: saved_view

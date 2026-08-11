@@ -164,16 +164,15 @@ defmodule SelectoComponents.Form.ViewLifecycleTest do
     assert updated_socket.assigns.show_view_configurator == true
     assert updated_socket.assigns.view_config.view_mode == "graph"
 
-    assert updated_socket.assigns.view_config.views.graph.x_axis == [
+    assert updated_socket.assigns.view_config.views.graph.group_by == [
              {"g1", "status", %{"format" => "default"}}
            ]
 
-    assert updated_socket.assigns.view_config.views.graph.y_axis == [
-             {"a1", "id", %{"alias" => "Rows", "function" => "count"}}
+    assert updated_socket.assigns.view_config.views.graph.aggregate == [
+             {"a1", "id", %{"alias" => "Rows", "format" => "count"}}
            ]
 
-    assert updated_socket.assigns.view_config.views.graph.series == [{"s1", "priority", %{}}]
-    assert updated_socket.assigns.view_config.views.graph.color_by == [{"c1", "status", %{}}]
+    assert updated_socket.assigns.view_config.views.graph.visual.series == ["s1", "c1"]
     assert Map.get(updated_socket.assigns, :executed) != true
   end
 
@@ -238,13 +237,12 @@ defmodule SelectoComponents.Form.ViewLifecycleTest do
     assert updated_socket.assigns.show_view_configurator == true
     assert updated_socket.assigns.active_tab == "view"
 
-    assert updated_socket.assigns.view_config.views.graph.x_axis == [
+    assert updated_socket.assigns.view_config.views.graph.group_by == [
              {"g1", "category", %{"field" => "category", "index" => "0", "uuid" => "g1"}}
            ]
 
-    assert updated_socket.assigns.view_config.views.graph.y_axis == [
-             {"a1", "id",
-              %{"field" => "id", "function" => "count", "index" => "0", "uuid" => "a1"}}
+    assert updated_socket.assigns.view_config.views.graph.aggregate == [
+             {"a1", "id", %{"field" => "id", "format" => "count", "index" => "0", "uuid" => "a1"}}
            ]
   end
 
@@ -300,7 +298,7 @@ defmodule SelectoComponents.Form.ViewLifecycleTest do
     assert saved_params["views"]["detail"]["row_click_action"] == "workspace_spotlight"
     assert saved_params["views"]["detail"]["prevent_denormalization"] == false
     assert saved_params["views"]["aggregate"]["grid"] == true
-    assert saved_params["views"]["graph"]["chart_type"] == "line"
+    assert saved_params["views"]["graph"]["visual"]["type"] == "line"
 
     assert saved_params["filters"] == [
              ["f1", "filters", %{"comp" => "=", "filter" => "status", "value" => "open"}]
