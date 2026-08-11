@@ -361,6 +361,35 @@ defmodule SelectoComponents.Form.ParamsStateTest do
     assert params["aggregate_per_page"] == "300"
   end
 
+  test "view_config_to_params preserves graph chart type and display options" do
+    view_config = %{
+      view_mode: "graph",
+      filters: [],
+      views: %{
+        graph: %{
+          x_axis: [{"x1", "reservation_month", %{}}],
+          y_axis: [{"y1", "reservation_hours", %{"function" => "sum"}}],
+          series: [{"s1", "machine", %{}}],
+          color_by: [{"c1", "site", %{}}],
+          chart_type: "line",
+          options: %{
+            "title" => "Monthly utilization",
+            "x_axis_label" => "Month",
+            "y_axis_label" => "Hours"
+          }
+        }
+      }
+    }
+
+    params = ParamsState.view_config_to_params(view_config)
+
+    assert params["chart_type"] == "line"
+    assert params["options"]["title"] == "Monthly utilization"
+    assert params["options"]["x_axis_label"] == "Month"
+    assert params["options"]["y_axis_label"] == "Hours"
+    assert params["color_by"]["k0"]["field"] == "site"
+  end
+
   test "convert_saved_config_to_full_params restores aggregate grid color settings" do
     saved = %{
       "aggregate" => %{

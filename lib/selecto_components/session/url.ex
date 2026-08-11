@@ -204,6 +204,14 @@ defmodule SelectoComponents.Session.URL do
        when key in [:row_click_action, "row_click_action"],
        do: maybe_put_param(acc, "row_click_action", normalize_optional_scalar(value))
 
+  defp merge_scalar_view_param(acc, :graph, key, value)
+       when key in [:chart_type, "chart_type"],
+       do: maybe_put_param(acc, "chart_type", normalize_optional_scalar(value))
+
+  defp merge_scalar_view_param(acc, :graph, key, value)
+       when key in [:options, "options"] and is_map(value),
+       do: Map.put(acc, "options", value)
+
   defp merge_scalar_view_param(acc, :map, key, value) when key in [:center, "center"],
     do: maybe_put_center_params(acc, value)
 
@@ -273,7 +281,8 @@ defmodule SelectoComponents.Session.URL do
       "aggregate",
       "x_axis",
       "y_axis",
-      "series"
+      "series",
+      "color_by"
     ]
 
   defp compact_param_key(index) when is_integer(index), do: "k" <> Integer.to_string(index, 36)
