@@ -2,6 +2,20 @@
 CHANGES
 =======
 
+V 0.4.13 - Fail-Closed LiveView Query and Action Boundaries
+-----------------------------------------------------------
+
+- Dropped undeclared action inputs and denied missing or unknown capability
+  decisions before action requests can reach the host application.
+- Enforced query-contract field ACLs and strict filter compilation on the
+  LiveView execution path so invalid restrictive filters cannot widen results.
+- Rejected unconfirmed applies, unknown detail sort fields, and unsafe raw date
+  identifiers before constructing an execution plan.
+- Restricted map tiles and image overlays to HTTPS or same-origin URLs on an
+  explicit host allowlist.
+- Replaced retained metrics SQL with SHA-256 fingerprints by default while
+  keeping raw query capture as an explicit operational opt-in.
+
 V 0.4.12 - Aggregate-backed Graph Configuration
 ------------------------------------------------
 
