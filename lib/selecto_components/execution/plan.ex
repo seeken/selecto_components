@@ -100,12 +100,13 @@ defmodule SelectoComponents.Execution.Plan do
   end
 
   defp rebuild_selecto(old_selecto) do
-    Selecto.configure(
-      old_selecto.domain,
+    old_selecto.domain
+    |> Selecto.configure(
       old_selecto.connection,
       adapter: old_selecto.adapter,
       validate: false
     )
+    |> Map.put(:domain_ref, Map.get(old_selecto, :domain_ref))
   end
 
   defp put_runtime_presentation_context(params, presentation_context) when is_map(params) do

@@ -9,6 +9,18 @@ defmodule SelectoComponents.Form.ChoiceSourceLiveTest do
     use SelectoComponents.Form.EventHandlers.ChoiceSourceOperations
   end
 
+  defmodule Registry do
+    @behaviour Selecto.Domain.Registry
+
+    @impl true
+    def fetch("orders", %{actor: %{id: 7}, tenant: "tenant-from-socket"}) do
+      {:ok, SelectoComponents.Form.ChoiceSourceLiveTest.domain()}
+    end
+
+    def fetch("orders", _context), do: {:error, :forbidden}
+    def fetch(_id, _context), do: {:error, :not_found}
+  end
+
   test "resolves options over LiveView with socket-owned scope and domain filters" do
     test_pid = self()
     actor = %{id: 7, email: "analyst@example.test"}
@@ -145,11 +157,63 @@ defmodule SelectoComponents.Form.ChoiceSourceLiveTest do
     assert reply["error"]["code"] == "choice_source_field_mismatch"
   end
 
+  test "resolves an opaque registered domain reference with socket-owned context" do
+    test_pid = self()
+
+    options_resolver = fn %OptionsRequest{} = request ->
+      send(test_pid, {:registered_options_request, request})
+      Choices.options_resolved([%{value: 42, label: "Acme Camps"}])
+    end
+
+    socket =
+      socket(%{
+        choice_source_domain: Selecto.Domain.Ref.new("orders", Registry),
+        choice_source_options_resolver: options_resolver,
+        choice_source_scope: %{
+          actor: %{id: 7},
+          tenant: "tenant-from-socket"
+        },
+        current_user: %{id: 7},
+        current_tenant: "tenant-from-socket"
+      })
+
+    {:reply, reply, ^socket} =
+      TestLive.handle_event(
+        "selecto_choice_source_options",
+        %{"choice_source" => "customer_choices"},
+        socket
+      )
+
+    assert reply["status"] == "resolved"
+    assert_receive {:registered_options_request, %OptionsRequest{tenant: "tenant-from-socket"}}
+  end
+
+  test "does not reveal whether a registered LiveView domain is missing or forbidden" do
+    for id <- ["orders", "missing"] do
+      socket =
+        socket(%{
+          choice_source_domain: Selecto.Domain.Ref.new(id, Registry),
+          choice_source_options_resolver: fn _request -> Choices.options_resolved([]) end
+        })
+
+      {:reply, reply, ^socket} =
+        TestLive.handle_event(
+          "selecto_choice_source_options",
+          %{"choice_source" => "customer_choices"},
+          socket
+        )
+
+      assert reply["status"] == "error"
+      assert reply["error"]["code"] == "choice_source_domain_unavailable"
+      refute Map.has_key?(reply["error"], "reason")
+    end
+  end
+
   defp socket(assigns) do
     %Phoenix.LiveView.Socket{assigns: Map.put(assigns, :__changed__, %{})}
   end
 
-  defp domain do
+  def domain do
     %{
       schema_version: 1,
       name: :orders,

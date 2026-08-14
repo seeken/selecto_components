@@ -9,8 +9,10 @@ defmodule SelectoComponents.Form.ChoiceSourceLive do
   """
 
   alias Phoenix.LiveView.Socket
+  alias Selecto.Domain.Ref
   alias Selecto.Domain.Choices
   alias Selecto.Domain.Choices.{OptionsResult, Result}
+  alias SelectoComponents.DomainResolver
   alias SelectoComponents.QueryContract
 
   @default_limit 25
@@ -107,6 +109,22 @@ defmodule SelectoComponents.Form.ChoiceSourceLive do
 
   defp domain_input(socket) do
     cond do
+      match?(%Ref{}, assign(socket, :choice_source_domain)) ->
+        ref = assign(socket, :choice_source_domain)
+
+        case DomainResolver.resolve_ref(ref, registry_context(socket)) do
+          {:ok, domain} ->
+            {:ok, domain}
+
+          {:error, _error} ->
+            {:error,
+             error(
+               :choice_source_domain_unavailable,
+               "registered choice-source domain is unavailable",
+               [:choice_source_domain]
+             )}
+        end
+
       is_map(assign(socket, :choice_source_domain)) ->
         {:ok, assign(socket, :choice_source_domain)}
 
@@ -127,6 +145,19 @@ defmodule SelectoComponents.Form.ChoiceSourceLive do
            [:selecto]
          )}
     end
+  end
+
+  defp registry_context(socket) do
+    socket
+    |> assign(:choice_source_context)
+    |> map_or_empty()
+    |> Map.merge(
+      compact(%{
+        actor: current_actor(socket),
+        tenant: current_tenant(socket),
+        transport: :live_view
+      })
+    )
   end
 
   defp authored_domain?(value) when is_map(value) do

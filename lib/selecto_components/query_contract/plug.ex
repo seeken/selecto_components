@@ -3,30 +3,25 @@ defmodule SelectoComponents.QueryContract.Plug do
   Plug endpoint for serving a Selecto query contract JSON document.
 
   Host applications can mount this plug at whatever route makes sense for their
-  domain. The plug accepts either a direct `:domain` option or a `:resolver`
-  function that returns the domain for the current connection.
+  domain. The plug accepts a direct `:domain`, a compatibility `:resolver`, or
+  a trusted `:registry` that resolves an opaque request id.
   """
 
   import Plug.Conn
 
   alias SelectoComponents.QueryContract
+  alias SelectoComponents.DomainResolver
   alias SelectoComponents.QueryContract.HttpCache
   alias SelectoComponents.QueryContract.Links
 
   @behaviour Plug
 
   @impl Plug
-  def init(opts) do
-    if Keyword.has_key?(opts, :domain) or Keyword.has_key?(opts, :resolver) do
-      opts
-    else
-      raise ArgumentError, "expected :domain or :resolver for #{inspect(__MODULE__)}"
-    end
-  end
+  def init(opts), do: DomainResolver.init!(opts, __MODULE__)
 
   @impl Plug
   def call(conn, opts) do
-    case contract_input(conn, opts) do
+    case DomainResolver.resolve(conn, opts, "query contract") do
       {:ok, input, resolved_opts} ->
         send_contract(conn, input, Keyword.merge(opts, resolved_opts))
 
@@ -34,56 +29,6 @@ defmodule SelectoComponents.QueryContract.Plug do
         send_error(conn, status, code, message)
     end
   end
-
-  defp contract_input(conn, opts) do
-    case Keyword.fetch(opts, :domain) do
-      {:ok, domain} ->
-        {:ok, domain, []}
-
-      :error ->
-        opts
-        |> Keyword.fetch!(:resolver)
-        |> resolve_domain(conn)
-    end
-  end
-
-  defp resolve_domain(resolver, conn) do
-    result =
-      cond do
-        is_function(resolver, 1) ->
-          resolver.(conn)
-
-        is_function(resolver, 2) ->
-          resolver.(domain_id(conn), conn)
-
-        true ->
-          {:error, :invalid_resolver}
-      end
-
-    normalize_resolver_result(result)
-  rescue
-    exception ->
-      {:error, 500, :resolver_failed, Exception.message(exception)}
-  end
-
-  defp normalize_resolver_result({:ok, input}), do: {:ok, input, []}
-  defp normalize_resolver_result({:ok, input, opts}) when is_list(opts), do: {:ok, input, opts}
-
-  defp normalize_resolver_result({:error, :invalid_resolver}) do
-    {:error, 500, :invalid_resolver,
-     "query contract resolver must be a one- or two-arity function"}
-  end
-
-  defp normalize_resolver_result({:error, reason}) do
-    {:error, 404, :not_found, "query contract domain not found: #{inspect(reason)}"}
-  end
-
-  defp normalize_resolver_result(nil) do
-    {:error, 404, :not_found, "query contract domain not found"}
-  end
-
-  defp normalize_resolver_result({input, opts}) when is_list(opts), do: {:ok, input, opts}
-  defp normalize_resolver_result(input), do: {:ok, input, []}
 
   defp send_contract(conn, input, opts) do
     opts = Links.with_request_defaults(conn, opts, :query_contract)
@@ -149,16 +94,4 @@ defmodule SelectoComponents.QueryContract.Plug do
       }
     })
   end
-
-  defp domain_id(conn) do
-    fetch_conn_value(conn.path_params, "domain") ||
-      fetch_conn_value(conn.path_params, :domain) ||
-      fetch_conn_value(conn.params, "domain") ||
-      fetch_conn_value(conn.params, :domain) ||
-      fetch_conn_value(conn.assigns, :selecto_domain) ||
-      fetch_conn_value(conn.assigns, :domain)
-  end
-
-  defp fetch_conn_value(map, key) when is_map(map), do: Map.get(map, key)
-  defp fetch_conn_value(_map, _key), do: nil
 end

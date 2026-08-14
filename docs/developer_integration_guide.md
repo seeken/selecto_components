@@ -242,8 +242,10 @@ Mount JSON, Markdown, and validation endpoints for clients and generated tools:
 ```elixir
 forward "/selecto/orders/query-contract.json",
         SelectoComponents.QueryContract.Plug,
-        resolver: &MyAppWeb.QueryContractDomains.orders/1,
+        registry: MyApp.SelectoDomains.Registry,
         domain_id: "orders",
+        registry_context: &MyAppWeb.SelectoDomainContext.from_conn/1,
+        registry_options: &MyAppWeb.QueryContractPolicy.options/1,
         domain_path: "/orders",
         query_contract_url: "/api/selecto/orders/query-contract.json",
         query_guide_url: "/api/selecto/orders/query-guide.md",
@@ -257,23 +259,29 @@ forward "/selecto/orders/query-contract.json",
 
 forward "/selecto/orders/query-intent/validate",
         SelectoComponents.QueryContract.IntentValidator.Plug,
-        resolver: &MyAppWeb.QueryContractDomains.orders/1
+        registry: MyApp.SelectoDomains.Registry,
+        domain_id: "orders",
+        registry_context: &MyAppWeb.SelectoDomainContext.from_conn/1,
+        registry_options: &MyAppWeb.QueryContractPolicy.options/1
 ```
 
-The resolver can return policy opts:
+The registry must return only registered, actor/tenant-authorized domains:
 
 ```elixir
-def orders(conn) do
-  {:ok, MyApp.SelectoDomains.OrderDomain.domain(),
-   [
-     actor: policy_actor(conn),
-     tenant: tenant_id(conn),
-     domain: :orders,
-     surface: :query_contract,
-     capability_resolver: &query_contract_capability_decision/1
-   ]}
+def fetch("orders", %{actor: actor, tenant: tenant}) do
+  if MyApp.Policy.can_query_orders?(actor, tenant) do
+    {:ok, MyApp.SelectoDomains.OrderDomain.domain()}
+  else
+    {:error, :forbidden}
+  end
 end
 ```
+
+Direct `:domain` and function `:resolver` configuration remain available for
+trusted or compatibility integrations. Use `:registry_options` for dynamic,
+server-owned capability options such as `actor`, `tenant`, `domain`, and
+`capability_resolver`. Registry metadata is provenance and is not promoted into
+plug options.
 
 Contracts project policy for:
 
@@ -299,7 +307,9 @@ Recommended router shape:
 ```elixir
 forward "/selecto/orders/choice-sources",
         SelectoComponents.QueryContract.ChoiceSource.Plug,
-        resolver: &MyApp.SelectoDomains.OrderChoiceSources.domain/1,
+        registry: MyApp.SelectoDomains.Registry,
+        domain_id: "orders",
+        registry_context: &MyAppWeb.SelectoDomainContext.from_conn/1,
         options_resolver: &MyApp.SelectoDomains.OrderChoiceSources.resolve_options/1,
         membership_resolver: &MyApp.SelectoDomains.OrderChoiceSources.resolve_membership/1,
         value_parser: &MyApp.SelectoDomains.OrderChoiceSources.parse_value/2,

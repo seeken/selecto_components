@@ -210,8 +210,15 @@ endpoint:
 ```elixir
 forward "/selecto/orders/query-contract.json",
         SelectoComponents.QueryContract.Plug,
-        domain: MyApp.SelectoDomains.Orders.domain()
+        registry: MyApp.SelectoDomains.Orders,
+        domain_id: MyApp.SelectoDomains.Orders.domain_id(),
+        registry_context: &MyAppWeb.SelectoDomainContext.from_conn/1
 ```
+
+The plug also retains direct `:domain` and function `:resolver` modes for
+compatibility. Registry mode is recommended at request boundaries: the client
+selects only an opaque id, while server-owned context controls whether the
+registry returns its validated domain.
 
 For the full host integration path, including generated action forms,
 capability policy, choice-source diagnostics, exported views, scheduled exports,

@@ -10,21 +10,17 @@ defmodule SelectoComponents.QueryContract.IntentValidator.Plug do
   import Plug.Conn
 
   alias SelectoComponents.QueryContract
+  alias SelectoComponents.DomainResolver
 
   @behaviour Plug
 
   @impl Plug
-  def init(opts) do
-    if Keyword.has_key?(opts, :domain) or Keyword.has_key?(opts, :resolver) do
-      opts
-    else
-      raise ArgumentError, "expected :domain or :resolver for #{inspect(__MODULE__)}"
-    end
-  end
+  def init(opts), do: DomainResolver.init!(opts, __MODULE__)
 
   @impl Plug
   def call(%Plug.Conn{method: "POST"} = conn, opts) do
-    with {:ok, input, resolved_opts} <- contract_input(conn, opts),
+    with {:ok, input, resolved_opts} <-
+           DomainResolver.resolve(conn, opts, "query intent validator"),
          {:ok, intent, conn} <- request_intent(conn) do
       send_validation(conn, input, intent, Keyword.merge(opts, resolved_opts))
     else
@@ -38,56 +34,6 @@ defmodule SelectoComponents.QueryContract.IntentValidator.Plug do
     |> put_resp_header("allow", "POST")
     |> send_error(405, :method_not_allowed, "query intent validation accepts POST requests only")
   end
-
-  defp contract_input(conn, opts) do
-    case Keyword.fetch(opts, :domain) do
-      {:ok, domain} ->
-        {:ok, domain, []}
-
-      :error ->
-        opts
-        |> Keyword.fetch!(:resolver)
-        |> resolve_domain(conn)
-    end
-  end
-
-  defp resolve_domain(resolver, conn) do
-    result =
-      cond do
-        is_function(resolver, 1) ->
-          resolver.(conn)
-
-        is_function(resolver, 2) ->
-          resolver.(domain_id(conn), conn)
-
-        true ->
-          {:error, :invalid_resolver}
-      end
-
-    normalize_resolver_result(result)
-  rescue
-    exception ->
-      {:error, 500, :resolver_failed, Exception.message(exception)}
-  end
-
-  defp normalize_resolver_result({:ok, input}), do: {:ok, input, []}
-  defp normalize_resolver_result({:ok, input, opts}) when is_list(opts), do: {:ok, input, opts}
-
-  defp normalize_resolver_result({:error, :invalid_resolver}) do
-    {:error, 500, :invalid_resolver,
-     "query intent validator resolver must be a one- or two-arity function"}
-  end
-
-  defp normalize_resolver_result({:error, reason}) do
-    {:error, 404, :not_found, "query intent validator domain not found: #{inspect(reason)}"}
-  end
-
-  defp normalize_resolver_result(nil) do
-    {:error, 404, :not_found, "query intent validator domain not found"}
-  end
-
-  defp normalize_resolver_result({input, opts}) when is_list(opts), do: {:ok, input, opts}
-  defp normalize_resolver_result(input), do: {:ok, input, []}
 
   defp request_intent(%Plug.Conn{body_params: %Plug.Conn.Unfetched{}} = conn) do
     read_json_intent(conn)
@@ -174,16 +120,4 @@ defmodule SelectoComponents.QueryContract.IntentValidator.Plug do
     |> send_resp(status, Jason.encode!(payload))
     |> halt()
   end
-
-  defp domain_id(conn) do
-    fetch_conn_value(conn.path_params, "domain") ||
-      fetch_conn_value(conn.path_params, :domain) ||
-      fetch_conn_value(conn.params, "domain") ||
-      fetch_conn_value(conn.params, :domain) ||
-      fetch_conn_value(conn.assigns, :selecto_domain) ||
-      fetch_conn_value(conn.assigns, :domain)
-  end
-
-  defp fetch_conn_value(map, key) when is_map(map), do: Map.get(map, key)
-  defp fetch_conn_value(_map, _key), do: nil
 end

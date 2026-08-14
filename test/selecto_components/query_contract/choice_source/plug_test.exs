@@ -9,7 +9,7 @@ defmodule SelectoComponents.QueryContract.ChoiceSource.PlugTest do
 
   describe "init/1" do
     test "requires a domain or resolver" do
-      assert_raise ArgumentError, ~r/expected :domain or :resolver/, fn ->
+      assert_raise ArgumentError, ~r/expected :domain, :resolver, or :registry/, fn ->
         ChoiceSourcePlug.init([])
       end
     end

@@ -5,9 +5,15 @@ defmodule SelectoComponents.QueryContract.PlugTest do
 
   alias SelectoComponents.QueryContract.Plug, as: QueryContractPlug
 
+  defmodule Registry do
+    use Selecto.Domain.Registry, id: "orders"
+
+    def domain, do: SelectoComponents.QueryContract.PlugTest.domain()
+  end
+
   describe "init/1" do
     test "requires a domain or resolver" do
-      assert_raise ArgumentError, ~r/expected :domain or :resolver/, fn ->
+      assert_raise ArgumentError, ~r/expected :domain, :resolver, or :registry/, fn ->
         QueryContractPlug.init([])
       end
     end
@@ -116,6 +122,19 @@ defmodule SelectoComponents.QueryContract.PlugTest do
              }
     end
 
+    test "serves a named domain from a trusted registry" do
+      conn =
+        :get
+        |> conn("/selecto/schema/orders/query-contract.json")
+        |> with_path_params(%{"domain" => "orders"})
+        |> QueryContractPlug.call(QueryContractPlug.init(registry: Registry))
+
+      assert conn.status == 200
+      body = Jason.decode!(conn.resp_body)
+      assert body["domain"]["id"] == "orders"
+      assert body["name"] == "Orders"
+    end
+
     test "returns 404 when the resolver cannot find a domain" do
       resolver = fn _domain_id, _conn -> nil end
 
@@ -149,7 +168,7 @@ defmodule SelectoComponents.QueryContract.PlugTest do
 
   defp with_path_params(conn, path_params), do: %{conn | path_params: path_params}
 
-  defp domain do
+  def domain do
     %{
       name: "Orders",
       source: %{

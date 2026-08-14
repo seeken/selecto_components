@@ -8,7 +8,8 @@ defmodule SelectoComponents.QueryContract.ChoiceSource.Plug do
   - `GET /:choice_source/options`
   - `POST /:choice_source/validate`
 
-  The domain may be supplied directly with `:domain` or lazily with `:resolver`.
+  The domain may be supplied directly with `:domain`, lazily with `:resolver`,
+  or by opaque id through a trusted `:registry`.
   Option and membership lookups use `:options_resolver` and
   `:membership_resolver`, each receiving the corresponding
   `Selecto.Domain.Choices` request struct.
@@ -24,6 +25,7 @@ defmodule SelectoComponents.QueryContract.ChoiceSource.Plug do
 
   alias Selecto.Domain.Choices
   alias Selecto.Domain.Choices.{OptionsResult, Result}
+  alias SelectoComponents.DomainResolver
   alias SelectoComponents.QueryContract
 
   @behaviour Plug
@@ -32,13 +34,7 @@ defmodule SelectoComponents.QueryContract.ChoiceSource.Plug do
   @max_limit 100
 
   @impl Plug
-  def init(opts) do
-    if Keyword.has_key?(opts, :domain) or Keyword.has_key?(opts, :resolver) do
-      opts
-    else
-      raise ArgumentError, "expected :domain or :resolver for #{inspect(__MODULE__)}"
-    end
-  end
+  def init(opts), do: DomainResolver.init!(opts, __MODULE__)
 
   @impl Plug
   def call(conn, opts) do
@@ -76,7 +72,7 @@ defmodule SelectoComponents.QueryContract.ChoiceSource.Plug do
   defp send_options(conn, choice_source_id, opts) do
     conn = fetch_query_params(conn)
 
-    with {:ok, input} <- contract_input(conn, opts),
+    with {:ok, input, _resolved_opts} <- DomainResolver.resolve(conn, opts, "choice-source"),
          {:ok, attrs} <- options_request_attrs(conn, opts) do
       case safe_list_options(input, choice_source_id, attrs) do
         {:ok, %OptionsResult{} = result} ->
@@ -100,7 +96,7 @@ defmodule SelectoComponents.QueryContract.ChoiceSource.Plug do
          {:ok, field} <- choice_field(params, choice_source_id, opts),
          {:ok, value} <- parse_choice_value(raw_value, field, choice_source_id, conn, opts),
          {:ok, request_attrs} <- membership_request_attrs(conn, opts),
-         {:ok, input} <- contract_input(conn, opts),
+         {:ok, input, _resolved_opts} <- DomainResolver.resolve(conn, opts, "choice-source"),
          :ok <- ensure_choice_source_exists(input, choice_source_id),
          :ok <-
            ensure_field_matches_choice_source(
@@ -130,54 +126,6 @@ defmodule SelectoComponents.QueryContract.ChoiceSource.Plug do
         send_error(conn, error_status(error), error)
     end
   end
-
-  defp contract_input(conn, opts) do
-    case Keyword.fetch(opts, :domain) do
-      {:ok, domain} ->
-        {:ok, domain}
-
-      :error ->
-        opts
-        |> Keyword.fetch!(:resolver)
-        |> resolve_domain(conn)
-    end
-  end
-
-  defp resolve_domain(resolver, conn) do
-    result =
-      cond do
-        is_function(resolver, 1) ->
-          resolver.(conn)
-
-        is_function(resolver, 2) ->
-          resolver.(domain_id(conn), conn)
-
-        true ->
-          {:error, :invalid_resolver}
-      end
-
-    normalize_resolver_result(result)
-  rescue
-    exception ->
-      {:error, 500, :resolver_failed, Exception.message(exception)}
-  end
-
-  defp normalize_resolver_result({:ok, input}), do: {:ok, input}
-
-  defp normalize_resolver_result({:error, :invalid_resolver}) do
-    {:error, 500, :invalid_resolver,
-     "choice-source resolver must be a one- or two-arity function"}
-  end
-
-  defp normalize_resolver_result({:error, reason}) do
-    {:error, 404, :not_found, "choice-source domain not found: #{inspect(reason)}"}
-  end
-
-  defp normalize_resolver_result(nil) do
-    {:error, 404, :not_found, "choice-source domain not found"}
-  end
-
-  defp normalize_resolver_result(input), do: {:ok, input}
 
   defp options_request_attrs(conn, opts) do
     with {:ok, scope_attrs} <- request_scope_attrs(conn, opts, :options) do
@@ -788,15 +736,6 @@ defmodule SelectoComponents.QueryContract.ChoiceSource.Plug do
     value
     |> to_string()
     |> String.replace(">", "%3E")
-  end
-
-  defp domain_id(conn) do
-    fetch_conn_value(conn.path_params, "domain") ||
-      fetch_conn_value(conn.path_params, :domain) ||
-      fetch_conn_value(conn.params, "domain") ||
-      fetch_conn_value(conn.params, :domain) ||
-      fetch_conn_value(conn.assigns, :selecto_domain) ||
-      fetch_conn_value(conn.assigns, :domain)
   end
 
   defp fetch_conn_value(map, key) when is_map(map), do: Map.get(map, key)
