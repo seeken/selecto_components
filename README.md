@@ -159,6 +159,24 @@ assign(socket,
 
 The host app owns actual delivery and scheduling. `selecto_components` stays scheduler-neutral.
 
+### Security-sensitive runtime options
+
+Map tile and image-overlay URLs are limited to HTTPS, same-origin paths, and an
+explicit host allowlist. OpenStreetMap's default tile host is allowed by default;
+add application-specific hosts in runtime configuration:
+
+```elixir
+config :selecto_components,
+  allowed_map_url_hosts: ["tiles.example.com", "*.maps.example.com"]
+```
+
+Performance metrics retain only a SHA-256 query fingerprint by default. Raw SQL
+capture is an explicit operational opt-in:
+
+```elixir
+config :selecto_components, capture_metrics_query_text: true
+```
+
 Recommended execution model: use Oban (or another worker system) to run due scheduled exports via `SelectoComponents.ScheduledExports.Service.run_scheduled_export/3`.
 
 ### Extension Views

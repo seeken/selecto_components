@@ -88,23 +88,30 @@ defmodule SelectoComponents.Performance.MetricsCollector do
       cache_counter: :counters.new(2, [:write_concurrency]),
       retention_period: Keyword.get(opts, :retention_period, @default_retention_seconds),
       max_queries: Keyword.get(opts, :max_queries, @default_max_queries),
-      max_errors: Keyword.get(opts, :max_errors, @default_max_errors)
+      max_errors: Keyword.get(opts, :max_errors, @default_max_errors),
+      capture_query_text:
+        Keyword.get(
+          opts,
+          :capture_query_text,
+          Application.get_env(:selecto_components, :capture_metrics_query_text, false)
+        )
     }
 
     {:ok, state}
   end
 
   def handle_cast({:record_query, query, execution_time, opts}, state) do
-    query_record = %{
-      id: Ecto.UUID.generate(),
-      query: query,
-      execution_time: execution_time,
-      timestamp: DateTime.utc_now(),
-      row_count: Map.get(opts, :row_count, 0),
-      table_scans: Map.get(opts, :table_scans, 0),
-      index_scans: Map.get(opts, :index_scans, 0),
-      memory_usage: Map.get(opts, :memory_usage, 0)
-    }
+    query_record =
+      %{
+        id: Ecto.UUID.generate(),
+        execution_time: execution_time,
+        timestamp: DateTime.utc_now(),
+        row_count: Map.get(opts, :row_count, 0),
+        table_scans: Map.get(opts, :table_scans, 0),
+        index_scans: Map.get(opts, :index_scans, 0),
+        memory_usage: Map.get(opts, :memory_usage, 0)
+      }
+      |> Map.merge(query_identity(query, state.capture_query_text))
 
     insert_record(state.queries_table, query_record)
     prune_table_to_limit(state.queries_table, state.max_queries)
@@ -113,12 +120,13 @@ defmodule SelectoComponents.Performance.MetricsCollector do
   end
 
   def handle_cast({:record_error, query, error}, state) do
-    error_record = %{
-      id: Ecto.UUID.generate(),
-      query: query,
-      error: error,
-      timestamp: DateTime.utc_now()
-    }
+    error_record =
+      %{
+        id: Ecto.UUID.generate(),
+        error: error,
+        timestamp: DateTime.utc_now()
+      }
+      |> Map.merge(query_identity(query, state.capture_query_text))
 
     insert_record(state.errors_table, error_record)
     prune_table_to_limit(state.errors_table, state.max_errors)
@@ -197,6 +205,15 @@ defmodule SelectoComponents.Performance.MetricsCollector do
   end
 
   # Helper Functions
+
+  defp query_identity(query, capture_query_text?) do
+    query = IO.iodata_to_binary(query)
+
+    %{
+      query: if(capture_query_text?, do: query, else: nil),
+      query_fingerprint: "sha256:" <> Base.encode16(:crypto.hash(:sha256, query), case: :lower)
+    }
+  end
 
   defp schedule_cleanup do
     Process.send_after(self(), :cleanup, @cleanup_interval_ms)

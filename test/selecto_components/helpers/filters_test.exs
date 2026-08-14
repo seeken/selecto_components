@@ -371,8 +371,47 @@ defmodule SelectoComponents.Helpers.FiltersTest do
 
       assert {:raw_sql_filter, iodata} = filter
       sql = IO.iodata_to_binary(iodata)
-      assert sql =~ "TO_TIMESTAMP((selecto_root.occurred_at_epoch) / 1000.0)"
+      assert sql =~ ~s|TO_TIMESTAMP(("selecto_root"."occurred_at_epoch") / 1000.0)|
       assert sql =~ "EXTRACT(ISODOW FROM"
+    end
+
+    test "quotes unusual domain identifiers in raw date extraction expressions" do
+      field = ~s|occurred_at") OR TRUE --|
+
+      domain = %{
+        name: "FiltersQuotedDateIdentifierTest",
+        source: %{
+          source_table: "records",
+          primary_key: :id,
+          fields: [:id, field],
+          redact_fields: [],
+          columns: %{
+            field => %{type: :utc_datetime, colid: field, name: field},
+            id: %{type: :integer}
+          },
+          associations: %{}
+        },
+        schemas: %{},
+        joins: %{}
+      }
+
+      filters = %{
+        "filters" => [
+          %{
+            "uuid" => "f1",
+            "section" => "filters",
+            "filter" => field,
+            "comp" => "SHORTCUT",
+            "value" => "monday"
+          }
+        ]
+      }
+
+      [filter] = Filters.filter_recurse(Selecto.configure(domain, nil), filters, "filters")
+      assert {:raw_sql_filter, iodata} = filter
+
+      assert IO.iodata_to_binary(iodata) =~
+               ~s|"selecto_root"."occurred_at"") OR TRUE --"|
     end
   end
 

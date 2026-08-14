@@ -509,7 +509,7 @@ defmodule SelectoComponents.Modal.ActionFormModal do
 
     confirmed = truthy?(Map.get(params, "confirmed"))
 
-    case validate_required_inputs(inputs, input_defs) do
+    case validate_submission(action, intent, confirmed, inputs, input_defs) do
       :ok ->
         submit_action_request(socket, action, target, intent, inputs, confirmed)
 
@@ -522,6 +522,18 @@ defmodule SelectoComponents.Modal.ActionFormModal do
            last_error: message
          )}
     end
+  end
+
+  defp validate_submission(action, "apply", false, inputs, input_defs) do
+    if truthy?(get_in(action, ["confirmation", "required"])) do
+      {:error, "Confirm this action before applying."}
+    else
+      validate_required_inputs(inputs, input_defs)
+    end
+  end
+
+  defp validate_submission(_action, _intent, _confirmed, inputs, input_defs) do
+    validate_required_inputs(inputs, input_defs)
   end
 
   defp submit_action_request(socket, action, target, intent, inputs, confirmed) do

@@ -95,6 +95,17 @@ defmodule SelectoComponents.Views.Map.ProcessTest do
     assert {:field, "recent_locations", "__map_track_path"} in view_set.selected
   end
 
+  test "map URL normalization rejects unallowlisted and active-content URLs" do
+    assert Process.normalize_config(%{
+             tile_url: "javascript:alert(1)",
+             image_overlay_url: "https://127.0.0.1/private.png"
+           }) == %{}
+
+    assert Process.normalize_config(%{
+             tile_url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+           }).tile_url == "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+  end
+
   defp columns_map(selecto) do
     selecto
     |> Selecto.columns()

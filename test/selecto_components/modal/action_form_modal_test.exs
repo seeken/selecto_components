@@ -60,6 +60,18 @@ defmodule SelectoComponents.Modal.ActionFormModalTest do
     assert payload.target == %{"id" => 42}
   end
 
+  test "submit_action_form refuses an unconfirmed apply request" do
+    assert {:noreply, updated_socket} =
+             ActionFormModal.handle_event(
+               "submit_action_form",
+               %{"intent" => "apply"},
+               socket(action(), %{id: 42})
+             )
+
+    assert updated_socket.assigns.last_error == "Confirm this action before applying."
+    refute_received {:selecto_action_form_submit, _payload}
+  end
+
   test "submit_action_form includes capability and link metadata when present" do
     action =
       action()

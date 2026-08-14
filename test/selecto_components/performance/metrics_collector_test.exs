@@ -8,7 +8,13 @@ defmodule SelectoComponents.Performance.MetricsCollectorTest do
 
   setup do
     ensure_metrics_collector_started()
-    configure_metrics_collector(max_queries: 3, max_errors: 2, retention_period: 1)
+
+    configure_metrics_collector(
+      max_queries: 3,
+      max_errors: 2,
+      retention_period: 1,
+      capture_query_text: false
+    )
 
     MetricsCollector.clear_metrics()
     _ = MetricsCollector.get_metrics("1h")
@@ -19,7 +25,8 @@ defmodule SelectoComponents.Performance.MetricsCollectorTest do
       configure_metrics_collector(
         max_queries: 10_000,
         max_errors: 1_000,
-        retention_period: 86_400
+        retention_period: 86_400,
+        capture_query_text: false
       )
 
       MetricsCollector.clear_metrics()
@@ -50,21 +57,25 @@ defmodule SelectoComponents.Performance.MetricsCollectorTest do
     assert metrics.percentiles.p50 >= 120
   end
 
-  test "enforces max query retention and returns sorted slow queries" do
-    prefix = "metrics-#{System.unique_integer([:positive])}"
+  test "does not retain raw query text by default" do
+    MetricsCollector.record_query("select secret_column from private_table", 120)
+    [_record] = slow = MetricsCollector.get_slow_queries(0, 10)
 
-    MetricsCollector.record_query("#{prefix}-q1", 100)
-    MetricsCollector.record_query("#{prefix}-q2", 600)
-    MetricsCollector.record_query("#{prefix}-q3", 700)
-    MetricsCollector.record_query("#{prefix}-q4", 800)
-    MetricsCollector.record_query("#{prefix}-q5", 900)
+    assert hd(slow).query == nil
+    assert hd(slow).query_fingerprint =~ ~r/^sha256:[0-9a-f]{64}$/
+  end
+
+  test "enforces max query retention and returns sorted slow queries" do
+    MetricsCollector.record_query("q1", 100)
+    MetricsCollector.record_query("q2", 600)
+    MetricsCollector.record_query("q3", 700)
+    MetricsCollector.record_query("q4", 800)
+    MetricsCollector.record_query("q5", 900)
 
     metrics = MetricsCollector.get_metrics("1h")
     assert metrics.total_queries >= 3
 
-    slow =
-      MetricsCollector.get_slow_queries(500, 20)
-      |> Enum.filter(&String.starts_with?(&1.query, prefix))
+    slow = MetricsCollector.get_slow_queries(500, 20)
 
     assert Enum.map(slow, & &1.execution_time) == [900, 800, 700]
   end
@@ -97,11 +108,9 @@ defmodule SelectoComponents.Performance.MetricsCollectorTest do
   end
 
   test "enforces max error retention" do
-    prefix = "metrics-#{System.unique_integer([:positive])}"
-
-    MetricsCollector.record_error("#{prefix}-q1", "err1")
-    MetricsCollector.record_error("#{prefix}-q2", "err2")
-    MetricsCollector.record_error("#{prefix}-q3", "err3")
+    MetricsCollector.record_error("q1", "err1")
+    MetricsCollector.record_error("q2", "err2")
+    MetricsCollector.record_error("q3", "err3")
 
     _ = MetricsCollector.get_metrics("1h")
 
@@ -109,9 +118,9 @@ defmodule SelectoComponents.Performance.MetricsCollectorTest do
       @errors_table
       |> :ets.tab2list()
       |> Enum.map(fn {_key, record} -> record end)
-      |> Enum.filter(&String.starts_with?(&1.query, prefix))
 
     assert length(retained_errors) == 2
+    assert Enum.all?(retained_errors, &is_nil(&1.query))
   end
 
   test "cleanup drops stale records from ETS" do
@@ -147,17 +156,19 @@ defmodule SelectoComponents.Performance.MetricsCollectorTest do
 
     _ = MetricsCollector.get_metrics("1h")
 
+    fresh_query_fingerprint = query_fingerprint("#{prefix}-fresh")
+
     matching_queries =
       @queries_table
       |> :ets.tab2list()
       |> Enum.map(fn {_key, record} -> record end)
-      |> Enum.filter(&String.starts_with?(&1.query, prefix))
+      |> Enum.filter(&(Map.get(&1, :query_fingerprint) == fresh_query_fingerprint))
 
     matching_errors =
       @errors_table
       |> :ets.tab2list()
       |> Enum.map(fn {_key, record} -> record end)
-      |> Enum.filter(&String.starts_with?(&1.query, prefix))
+      |> Enum.filter(&(Map.get(&1, :query_fingerprint) == fresh_query_fingerprint))
 
     assert length(matching_queries) == 1
     assert length(matching_errors) == 1
@@ -189,6 +200,11 @@ defmodule SelectoComponents.Performance.MetricsCollectorTest do
       |> Map.put(:max_queries, Keyword.fetch!(opts, :max_queries))
       |> Map.put(:max_errors, Keyword.fetch!(opts, :max_errors))
       |> Map.put(:retention_period, Keyword.fetch!(opts, :retention_period))
+      |> Map.put(:capture_query_text, Keyword.fetch!(opts, :capture_query_text))
     end)
+  end
+
+  defp query_fingerprint(query) do
+    "sha256:" <> Base.encode16(:crypto.hash(:sha256, query), case: :lower)
   end
 end

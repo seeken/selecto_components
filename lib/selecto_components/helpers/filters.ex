@@ -934,7 +934,10 @@ defmodule SelectoComponents.Helpers.Filters do
 
     cond do
       date_like_type in [:datetime, :timestamp, :naive_datetime, :utc_datetime, :date] ->
-        case safe_make_date_filter(f, column) do
+        date_filter =
+          Map.put(f, "__selecto_date_field_expr", quote_date_filter_field(selecto, filter_key))
+
+        case safe_make_date_filter(date_filter, column) do
           {:ok, {:or, conditions}} ->
             or_filters =
               Enum.map(conditions, fn filter_val ->
@@ -1906,19 +1909,28 @@ defmodule SelectoComponents.Helpers.Filters do
   end
 
   defp date_filter_field_expr(filter, field_conf) do
-    case Map.get(filter, "filter") do
-      field when is_binary(field) and field != "" ->
-        field
-        |> then(fn field_expr ->
-          if String.contains?(field_expr, "."),
-            do: field_expr,
-            else: "selecto_root." <> field_expr
-        end)
-        |> epoch_datetime_expr(field_conf)
+    case Map.get(filter, "__selecto_date_field_expr") do
+      field_expr when is_binary(field_expr) and field_expr != "" ->
+        epoch_datetime_expr(field_expr, field_conf)
 
       _ ->
-        "selecto_root.id"
+        ~s("selecto_root"."id")
     end
+  end
+
+  defp quote_date_filter_field(selecto, field) do
+    adapter = Selecto.AdapterSQL.adapter(selecto)
+
+    field
+    |> to_string()
+    |> String.split(".", trim: true)
+    |> then(fn
+      [single] -> ["selecto_root", single]
+      qualified -> qualified
+    end)
+    |> Enum.map_join(".", fn identifier ->
+      adapter.quote_identifier(identifier) |> IO.iodata_to_binary()
+    end)
   end
 
   defp epoch_datetime_expr(field_expr, field_conf) do

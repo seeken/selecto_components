@@ -75,4 +75,21 @@ defmodule SelectoComponents.Views.Detail.ProcessTest do
     assert view_meta.page == 0
     assert view_set.order_by == [{:desc, "id"}]
   end
+
+  test "unknown sort fields are excluded from the generated query set" do
+    params = %{
+      "selected" => %{
+        "k0" => %{"field" => "id", "index" => "0", "uuid" => "id-col", "alias" => ""}
+      },
+      "order_by" => %{
+        "k0" => %{"field" => "not_a_column", "index" => "0", "dir" => "desc"},
+        "k1" => %{"field" => "name", "index" => "1", "dir" => "asc"}
+      }
+    }
+
+    {view_set, _view_meta} =
+      Process.view(%{}, params, Selecto.columns(selecto()), [], selecto())
+
+    assert view_set.order_by == ["name"]
+  end
 end

@@ -316,16 +316,27 @@ defmodule SelectoComponents.Views.Detail.Process do
     end)
   end
 
-  defp order_by(order_by, _columns) do
+  defp order_by(order_by, columns) do
     order_by
     |> Map.values()
     |> Enum.sort_by(&Param.integer(Map.get(&1, "index")))
+    |> Enum.filter(&allowed_order_field?(&1, columns))
     |> Enum.map(fn e ->
       case e["dir"] do
         "desc" -> {:desc, e["field"]}
         _ -> e["field"]
       end
     end)
+  end
+
+  defp allowed_order_field?(entry, columns) do
+    field = Map.get(entry, "field")
+
+    Map.has_key?(columns, field) or
+      Enum.any?(columns, fn {key, column} ->
+        to_string(key) == to_string(field) or
+          to_string(Map.get(column, :colid)) == to_string(field)
+      end)
   end
 
   defp selected(detail_selected, columns) do

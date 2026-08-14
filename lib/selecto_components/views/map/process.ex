@@ -14,6 +14,7 @@ defmodule SelectoComponents.Views.Map.Process do
   @default_image_overlay_rotation 0.0
   @min_zoom 1
   @max_zoom 20
+  @default_allowed_map_url_hosts ["template.tile.openstreetmap.org"]
 
   @config_keys [
     :source_mode,
@@ -101,7 +102,7 @@ defmodule SelectoComponents.Views.Map.Process do
       tile_url:
         config
         |> get_map_value(:tile_url)
-        |> normalize_text(),
+        |> normalize_map_url(),
       attribution:
         config
         |> get_map_value(:attribution)
@@ -114,7 +115,7 @@ defmodule SelectoComponents.Views.Map.Process do
       image_overlay_url:
         config
         |> get_map_value(:image_overlay_url)
-        |> normalize_text(),
+        |> normalize_map_url(),
       image_overlay_bounds:
         config
         |> get_map_value(:image_overlay_bounds)
@@ -442,6 +443,42 @@ defmodule SelectoComponents.Views.Map.Process do
   end
 
   defp normalize_background_mode(_), do: nil
+
+  defp normalize_map_url(value) do
+    value = normalize_text(value)
+
+    cond do
+      is_nil(value) ->
+        nil
+
+      String.starts_with?(value, "/") and not String.starts_with?(value, "//") ->
+        value
+
+      true ->
+        parseable_url = Regex.replace(~r/\{[^{}]+\}/, value, "template")
+
+        with {:ok, %URI{scheme: "https", host: host, userinfo: nil}} when is_binary(host) <-
+               URI.new(parseable_url),
+             true <- allowed_map_url_host?(String.downcase(host)) do
+          value
+        else
+          _other -> nil
+        end
+    end
+  end
+
+  defp allowed_map_url_host?(host) do
+    :selecto_components
+    |> Application.get_env(:allowed_map_url_hosts, @default_allowed_map_url_hosts)
+    |> List.wrap()
+    |> Enum.any?(fn allowed_host ->
+      allowed_host = allowed_host |> to_string() |> String.downcase()
+
+      host == allowed_host or
+        (String.starts_with?(allowed_host, "*.") and
+           String.ends_with?(host, String.trim_leading(allowed_host, "*")))
+    end)
+  end
 
   defp normalize_coordinate_mode(nil), do: nil
 
