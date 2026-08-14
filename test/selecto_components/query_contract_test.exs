@@ -113,6 +113,32 @@ defmodule SelectoComponents.QueryContractTest do
   end
 
   describe "json_document/1" do
+    test "exposes map intent only when the domain configures a map view" do
+      map_domain =
+        Map.put(domain(), :map_view, %{
+          latitude_field: :id,
+          longitude_field: :customer_id,
+          popup_field: :status
+        })
+
+      assert {:ok, document, diagnostics} = QueryContract.json_document(map_domain)
+      assert diagnostics.errors == []
+      assert document["context"]["view_modes"] == ["detail", "aggregate", "graph", "map"]
+
+      assert document["params_schema"]["view_mode"]["values"] == [
+               "detail",
+               "aggregate",
+               "graph",
+               "map"
+             ]
+
+      assert %{valid?: true, errors: []} =
+               QueryContract.validate_intent(map_domain, %{
+                 "view_mode" => "map",
+                 "selected" => [%{"field" => "id"}]
+               })
+    end
+
     test "returns a JSON-ready query contract document" do
       assert {:ok, document, diagnostics} =
                QueryContract.json_document(domain(),

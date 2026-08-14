@@ -138,7 +138,12 @@ defmodule SelectoComponents.ExportedViews.EmbedLive do
     params = transient_params(snapshot.params, opts)
     sort_by = Keyword.get(opts, :sort_by, socket.assigns[:sort_by])
 
-    case Renderer.render_snapshot(%{snapshot | params: params}, sort_by: sort_by) do
+    runtime_opts =
+      socket.assigns.export_embed_opts
+      |> Keyword.take([:runtime, :runtime_provider])
+      |> Keyword.put(:sort_by, sort_by)
+
+    case Renderer.render_snapshot(%{snapshot | params: params}, runtime_opts) do
       {:ok, render_payload, _stats} ->
         socket
         |> assign(:render_payload, render_payload)
@@ -240,7 +245,9 @@ defmodule SelectoComponents.ExportedViews.EmbedLive do
       :domain,
       :context,
       :metadata,
-      :resolver_context
+      :resolver_context,
+      :runtime,
+      :runtime_provider
     ])
   end
 

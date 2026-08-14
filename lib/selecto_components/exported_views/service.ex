@@ -27,7 +27,7 @@ defmodule SelectoComponents.ExportedViews.Service do
     adapter_opts = Keyword.get(opts, :adapter_opts, [])
 
     with {:ok, snapshot} <- ExportedViews.decode_snapshot(view),
-         {:ok, render_payload, stats} <- Renderer.render_snapshot(snapshot),
+         {:ok, render_payload, stats} <- Renderer.render_snapshot(snapshot, runtime_opts(opts)),
          {:ok, updated_view} <-
            adapter.update_exported_view(
              view,
@@ -41,6 +41,8 @@ defmodule SelectoComponents.ExportedViews.Service do
         error
     end
   end
+
+  defp runtime_opts(opts), do: Keyword.take(opts, [:runtime, :runtime_provider])
 
   @spec rotate_signature(module(), map(), keyword()) :: {:ok, map()} | {:error, term()}
   def rotate_signature(adapter, view, opts \\ []) do

@@ -16,4 +16,10 @@ defmodule SelectoComponents.Debug.DebugDisplayTest do
 
     assert socket.assigns.expanded == true
   end
+
+  test "debug state does not offer dialect-specific SQL interpolation" do
+    {:ok, socket} = DebugDisplay.mount(%Phoenix.LiveView.Socket{})
+
+    refute Map.has_key?(socket.assigns, :show_interpolated)
+  end
 end

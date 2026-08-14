@@ -1,55 +1,39 @@
 defmodule SelectoComponents.Helpers do
   def text_search_mode_options(adapter) do
-    case Selecto.AdapterSupport.adapter_name(adapter) do
-      :mysql ->
-        [
-          {"natural", "Natural Language"},
-          {"websearch", "Web Style"},
-          {"plain", "Plain Tokens"},
-          {"boolean", "Boolean"},
-          {"query_expansion", "Query Expansion"}
-        ]
-
-      :sqlite ->
-        [
-          {"websearch", "Default MATCH"},
-          {"boolean", "Boolean"},
-          {"phrase", "Phrase"}
-        ]
-
-      _ ->
-        [
-          {"websearch", "Web Style"},
-          {"plain", "Plain Tokens"},
-          {"phrase", "Phrase"},
-          {"boolean", "Boolean"},
-          {"natural", "Natural Language"}
-        ]
-    end
+    adapter
+    |> Selecto.AdapterSupport.capability(:text_search)
+    |> Map.get(:modes, [])
+    |> Enum.map(fn mode -> {to_string(mode), text_search_mode_label(mode)} end)
   end
 
   def default_text_search_mode(adapter) do
-    case Selecto.AdapterSupport.adapter_name(adapter) do
-      :mysql -> "natural"
-      :sqlite -> "websearch"
-      _ -> "websearch"
-    end
+    adapter
+    |> Selecto.AdapterSupport.capability(:text_search)
+    |> Map.get(:default_mode, :websearch)
+    |> to_string()
   end
 
   def text_search_help_text(adapter) do
-    case Selecto.AdapterSupport.adapter_name(adapter) do
-      :mysql ->
-        "Native text search with natural-language, boolean, or query-expansion modes."
+    adapter
+    |> Selecto.AdapterSupport.capability(:text_search)
+    |> Map.get(
+      :help,
+      "Text search behavior is adapter-specific. Supported modes depend on the active database adapter."
+    )
+  end
 
-      :sqlite ->
-        "FTS-backed text search with MATCH syntax, including phrase and boolean-style queries when supported."
+  defp text_search_mode_label(:natural), do: "Natural Language"
+  defp text_search_mode_label(:websearch), do: "Web Style"
+  defp text_search_mode_label(:plain), do: "Plain Tokens"
+  defp text_search_mode_label(:boolean), do: "Boolean"
+  defp text_search_mode_label(:phrase), do: "Phrase"
+  defp text_search_mode_label(:query_expansion), do: "Query Expansion"
 
-      :postgresql ->
-        "Full-text search with web-style, plain, phrase, or boolean query modes."
-
-      _ ->
-        "Text search behavior is adapter-specific. Supported modes depend on the active database adapter."
-    end
+  defp text_search_mode_label(mode) do
+    mode
+    |> to_string()
+    |> String.replace("_", " ")
+    |> String.capitalize()
   end
 
   def datetime_grouping_format_options() do

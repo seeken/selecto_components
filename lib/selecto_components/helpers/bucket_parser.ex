@@ -54,74 +54,36 @@ defmodule SelectoComponents.Helpers.BucketParser do
   end
 
   @doc """
-  Generate SQL CASE expression for bucketing values
+  Build portable bucket intent for a Selecto field.
   """
-  def generate_bucket_case_sql(field_name, bucket_ranges, field_type \\ :integer) do
+  def bucket_selector(field, bucket_ranges, field_type \\ :integer, opts \\ %{}) do
     increment = parse_increment_shorthand(bucket_ranges)
 
-    if field_type in @numeric_bucket_types and is_integer(increment) do
-      generate_increment_case_sql(field_name, increment)
+    if (field_type in @numeric_bucket_types or field_type == :year) and is_integer(increment) do
+      {:bucket, field,
+       %{
+         kind: if(field_type == :year, do: :year_increment, else: :numeric_increment),
+         increment: increment,
+         temporal_options: Map.get(opts, :temporal_options, %{})
+       }}
     else
       ranges = parse_bucket_ranges(bucket_ranges)
 
       if Enum.empty?(ranges) do
-        field_name
+        field
       else
-        case_clauses =
-          Enum.map(ranges, fn
-            {min, max, label}
-            when field_type in [:date, :datetime] and is_integer(min) and is_integer(max) ->
-              date_expr = "DATE(#{field_name})"
-
-              if min == max do
-                "WHEN #{date_expr} = CURRENT_DATE - INTERVAL '#{min} day' THEN '#{label}'"
-              else
-                "WHEN #{date_expr} BETWEEN CURRENT_DATE - INTERVAL '#{max} day' AND CURRENT_DATE - INTERVAL '#{min} day' THEN '#{label}'"
-              end
-
-            {min, max, label} when is_integer(min) and is_integer(max) ->
-              if min == max do
-                "WHEN #{field_name} = #{min} THEN '#{label}'"
-              else
-                "WHEN #{field_name} >= #{min} AND #{field_name} <= #{max} THEN '#{label}'"
-              end
-
-            {min, :infinity, label} when field_type in [:date, :datetime] ->
-              "WHEN DATE(#{field_name}) <= CURRENT_DATE - INTERVAL '#{min} day' THEN '#{label}'"
-
-            {min, :infinity, label} ->
-              # For "11+" we want >= 11, not > 11
-              # The min value in "11+" means "11 and above"
-              "WHEN #{field_name} >= #{min} THEN '#{label}'"
-
-            {:negative_infinity, max, label} ->
-              "WHEN #{field_name} <= #{max} THEN '#{label}'"
-
-            {"today", "today", _label} when field_type in [:date, :datetime] ->
-              "WHEN DATE(#{field_name}) = CURRENT_DATE THEN 'Today'"
-
-            {"yesterday", "yesterday", _label} when field_type in [:date, :datetime] ->
-              "WHEN DATE(#{field_name}) = CURRENT_DATE - INTERVAL '1 day' THEN 'Yesterday'"
-
-            {"tomorrow", "tomorrow", _label} when field_type in [:date, :datetime] ->
-              "WHEN DATE(#{field_name}) = CURRENT_DATE + INTERVAL '1 day' THEN 'Tomorrow'"
-
-            _ ->
-              nil
-          end)
-          |> Enum.reject(&is_nil/1)
-
-        if Enum.empty?(case_clauses) do
-          field_name
-        else
-          "CASE #{Enum.join(case_clauses, " ")} ELSE 'Other' END"
-        end
+        {:bucket, field,
+         %{
+           kind: bucket_kind(field_type),
+           ranges: ranges,
+           temporal_options: Map.get(opts, :temporal_options, %{})
+         }}
       end
     end
   end
 
   @doc """
-  Generate SQL CASE expression for text prefix buckets.
+  Build portable text-prefix bucket intent.
 
   Example buckets with default options:
 
@@ -129,53 +91,34 @@ defmodule SelectoComponents.Helpers.BucketParser do
   - "A Team" -> "TE"
   - nil/blank/article-only -> "Other"
   """
-  def generate_text_prefix_case_sql(field_name, opts \\ %{}) do
+  def text_prefix_selector(field, opts \\ %{}) do
     prefix_length =
       parse_prefix_length(
         Map.get(opts, :prefix_length) || Map.get(opts, "prefix_length"),
         @default_prefix_length
       )
 
-    normalized_expr = normalized_text_sql(field_name, opts)
-
-    "CASE WHEN #{normalized_expr} = '' THEN 'Other' ELSE UPPER(LEFT(#{normalized_expr}, #{prefix_length})) END"
+    {:bucket, field,
+     %{
+       kind: :text_prefix,
+       prefix_length: prefix_length,
+       exclude_articles: normalized_articles(opts),
+       ignore_case:
+         ignore_case?(Map.get(opts, :ignore_case) || Map.get(opts, "ignore_case"), true)
+     }}
   end
 
   @doc """
-  Build normalized SQL text expression for prefix bucketing/filtering.
+  Build portable normalized-text selector intent for filtering.
   """
-  def normalized_text_sql(field_name, opts \\ %{}) do
-    qualified_field = qualify_field_name(field_name)
-    trimmed_expr = "BTRIM(COALESCE(#{qualified_field}::text, ''))"
-
-    article_normalized_expr =
-      if exclude_articles?(
-           Map.get(opts, :exclude_articles) || Map.get(opts, "exclude_articles"),
-           true
-         ) do
-        articles_pattern = Enum.join(@common_articles, "|")
-        "REGEXP_REPLACE(#{trimmed_expr}, '^(#{articles_pattern})([[:space:]]+|$)', '', 'i')"
-      else
-        trimmed_expr
-      end
-
-    if ignore_case?(Map.get(opts, :ignore_case) || Map.get(opts, "ignore_case"), true) do
-      "LOWER(#{article_normalized_expr})"
-    else
-      article_normalized_expr
-    end
+  def normalized_text_selector(field, opts \\ %{}) do
+    {:text_normalize, field,
+     %{
+       exclude_articles: normalized_articles(opts),
+       ignore_case:
+         ignore_case?(Map.get(opts, :ignore_case) || Map.get(opts, "ignore_case"), true)
+     }}
   end
-
-  def qualify_field_name(field_name) when is_binary(field_name) do
-    if String.contains?(field_name, ".") do
-      field_name
-    else
-      "selecto_root.#{field_name}"
-    end
-  end
-
-  def qualify_field_name(field_name) when is_atom(field_name), do: "selecto_root.#{field_name}"
-  def qualify_field_name(field_name), do: to_string(field_name)
 
   def parse_prefix_length(value, default \\ @default_prefix_length)
 
@@ -233,11 +176,20 @@ defmodule SelectoComponents.Helpers.BucketParser do
 
   defp parse_increment_shorthand(_), do: nil
 
-  defp generate_increment_case_sql(field_name, increment) do
-    bucket_start = "(FLOOR((#{field_name})::numeric / #{increment})::bigint * #{increment})"
+  defp bucket_kind(type) when type in [:date, :datetime], do: :date_relative_ranges
+  defp bucket_kind(:elapsed_days), do: :elapsed_days_ranges
+  defp bucket_kind(:year), do: :year_ranges
+  defp bucket_kind(_type), do: :numeric_ranges
 
-    "CASE WHEN #{field_name} IS NULL THEN 'Other' ELSE " <>
-      "(#{bucket_start})::text || '-' || ((#{bucket_start}) + #{increment - 1})::text END"
+  defp normalized_articles(opts) do
+    if exclude_articles?(
+         Map.get(opts, :exclude_articles) || Map.get(opts, "exclude_articles"),
+         true
+       ) do
+      @common_articles
+    else
+      []
+    end
   end
 
   @doc """

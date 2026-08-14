@@ -152,24 +152,13 @@ defmodule SelectoComponents.Debug.ConfigReaderTest do
   end
 
   describe "format_sql/2" do
-    test "formats SQL when enabled" do
+    test "preserves adapter-rendered SQL when formatting is enabled" do
       config = %{format_sql: true}
       sql = "select   *  from   users  where  id = 1"
 
       formatted = ConfigReader.format_sql(sql, config)
 
-      expected =
-        """
-        SELECT
-          *
-        FROM
-          users
-        WHERE
-          id = 1
-        """
-        |> String.trim()
-
-      assert formatted == expected
+      assert formatted == sql
     end
 
     test "preserves SQL when formatting disabled" do
@@ -181,19 +170,13 @@ defmodule SelectoComponents.Debug.ConfigReaderTest do
       assert formatted == sql
     end
 
-    test "formats SQL keywords to uppercase" do
+    test "does not reinterpret adapter SQL keywords or layout" do
       config = %{format_sql: true}
       sql = "select count(*) from users where active = true group by role order by created_at"
 
       formatted = ConfigReader.format_sql(sql, config)
 
-      assert formatted =~ "SELECT"
-      assert formatted =~ "COUNT"
-      assert formatted =~ "FROM"
-      assert formatted =~ "WHERE"
-      assert formatted =~ "GROUP BY"
-      assert formatted =~ "ORDER BY"
-      assert formatted =~ "\n  role\nORDER BY"
+      assert formatted == sql
     end
   end
 
@@ -268,7 +251,7 @@ defmodule SelectoComponents.Debug.ConfigReaderTest do
       assert debug_info == %{}
     end
 
-    test "formats SQL when enabled" do
+    test "preserves adapter-rendered SQL when enabled" do
       config = %{
         show_query: true,
         format_sql: true
@@ -280,18 +263,7 @@ defmodule SelectoComponents.Debug.ConfigReaderTest do
 
       debug_info = ConfigReader.build_debug_info(data, config)
 
-      assert debug_info.query =~ "SELECT"
-
-      expected =
-        """
-        SELECT
-          *
-        FROM
-          users
-        """
-        |> String.trim()
-
-      assert debug_info.query == expected
+      assert debug_info.query == data.query
     end
 
     test "includes page cache memory metrics when enabled" do

@@ -4,6 +4,15 @@ defmodule SelectoComponents.Views.Detail.QueryPaginationTest do
   alias SelectoComponents.Views.Detail.QueryPagination
 
   defmodule CaptureAdapter do
+    @behaviour Selecto.DB.Adapter
+
+    @impl true
+    def name, do: :capture
+
+    @impl true
+    def connect(parent) when is_pid(parent), do: {:ok, parent}
+
+    @impl true
     def execute(parent, query, _params, _opts) when is_pid(parent) do
       send(parent, {:executed_sql, query})
 
@@ -24,6 +33,18 @@ defmodule SelectoComponents.Views.Detail.QueryPaginationTest do
           {:ok, %{rows: [["Alpha"], ["Beta"]], columns: ["name"]}}
       end
     end
+
+    @impl true
+    def placeholder(_index), do: "?"
+
+    @impl true
+    def quote_identifier(identifier) do
+      escaped = identifier |> to_string() |> String.replace("\"", "\"\"")
+      ["\"", escaped, "\""]
+    end
+
+    @impl true
+    def supports?(_feature), do: false
   end
 
   def handle_telemetry(_event, measurements, metadata, parent) do
@@ -49,10 +70,8 @@ defmodule SelectoComponents.Views.Detail.QueryPaginationTest do
     }
 
     domain
-    |> Selecto.configure(nil, validate: false)
+    |> Selecto.configure(self(), adapter: CaptureAdapter, validate: false)
     |> Selecto.select(selected)
-    |> Map.put(:adapter, CaptureAdapter)
-    |> Map.put(:connection, self())
   end
 
   defp socket(cache \\ nil) do

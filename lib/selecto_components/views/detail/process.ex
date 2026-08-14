@@ -378,54 +378,48 @@ defmodule SelectoComponents.Views.Detail.Process do
 
     case format do
       "age_buckets" when is_binary(bucket_ranges) and bucket_ranges != "" ->
-        field_with_alias = detail_field_ref(col.colid)
-
-        case_sql =
-          BucketParser.generate_bucket_case_sql(
-            "(CURRENT_DATE - DATE(#{field_with_alias}))",
+        selector =
+          BucketParser.bucket_selector(
+            col.colid,
             bucket_ranges,
-            :integer
+            :elapsed_days,
+            %{temporal_options: %{epoch_storage: Selecto.Temporal.epoch_storage(col)}}
           )
 
-        {:field, {:raw_sql, case_sql}, alias_name}
+        {:field, selector, alias_name}
 
       "custom_buckets" when is_binary(bucket_ranges) and bucket_ranges != "" ->
-        field_with_alias = detail_field_ref(col.colid)
-
-        case_sql =
-          BucketParser.generate_bucket_case_sql(
-            field_with_alias,
+        selector =
+          BucketParser.bucket_selector(
+            col.colid,
             bucket_ranges,
-            :date
+            :date,
+            %{temporal_options: %{epoch_storage: Selecto.Temporal.epoch_storage(col)}}
           )
 
-        {:field, {:raw_sql, case_sql}, alias_name}
+        {:field, selector, alias_name}
 
       "year_buckets" when is_binary(bucket_ranges) and bucket_ranges != "" ->
-        field_with_alias = detail_field_ref(col.colid)
-
-        case_sql =
-          BucketParser.generate_bucket_case_sql(
-            "EXTRACT(YEAR FROM #{field_with_alias})",
+        selector =
+          BucketParser.bucket_selector(
+            col.colid,
             bucket_ranges,
-            :integer
+            :year,
+            %{temporal_options: %{epoch_storage: Selecto.Temporal.epoch_storage(col)}}
           )
 
-        {:field, {:raw_sql, case_sql}, alias_name}
+        {:field, selector, alias_name}
 
       _ ->
-        to_char_format = Map.get(date_formats, format)
+        datetime_format = Map.get(date_formats, format)
 
-        if is_binary(to_char_format) and to_char_format != "" do
-          {:field, {:to_char, {col.colid, to_char_format}}, alias_name}
+        if is_binary(datetime_format) and datetime_format != "" do
+          {:field,
+           {:datetime_format, col.colid, datetime_format,
+            %{epoch_storage: Selecto.Temporal.epoch_storage(col)}}, alias_name}
         else
           {:field, col.colid, alias_name}
         end
     end
-  end
-
-  defp detail_field_ref(colid) do
-    colid_str = to_string(colid)
-    if String.contains?(colid_str, "."), do: colid_str, else: "selecto_root." <> colid_str
   end
 end

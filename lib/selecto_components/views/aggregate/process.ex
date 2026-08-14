@@ -99,7 +99,7 @@ defmodule SelectoComponents.Views.Aggregate.Process do
       selected: selected,
       filtered: filtered,
       group_by: rollup_group_by,
-      ### when using rollup, we need to workaround postgres bug. Currently implemented in Selecto builder
+      ### Adapter-specific rollup compatibility is implemented by the configured dialect.
       order_by: literal_positions
     }
 
@@ -224,21 +224,7 @@ defmodule SelectoComponents.Views.Aggregate.Process do
               bucket_ranges = Map.get(e, "bucket_ranges")
 
               if format == "buckets" and is_binary(bucket_ranges) and bucket_ranges != "" do
-                field_with_alias =
-                  if String.contains?(to_string(col.colid), ".") do
-                    to_string(col.colid)
-                  else
-                    "selecto_root.#{col.colid}"
-                  end
-
-                case_sql =
-                  BucketParser.generate_bucket_case_sql(
-                    field_with_alias,
-                    bucket_ranges,
-                    :integer
-                  )
-
-                {:field, {:raw_sql, case_sql}, alias}
+                {:field, BucketParser.bucket_selector(col.colid, bucket_ranges, :integer), alias}
               else
                 {:field, col.colid, alias}
               end
@@ -257,8 +243,8 @@ defmodule SelectoComponents.Views.Aggregate.Process do
                 prefix_length = Map.get(e, "prefix_length", "2")
                 exclude_articles = Map.get(e, "exclude_articles", "true")
 
-                case_sql =
-                  BucketParser.generate_text_prefix_case_sql(
+                selector =
+                  BucketParser.text_prefix_selector(
                     col.colid,
                     %{
                       "prefix_length" => prefix_length,
@@ -266,7 +252,7 @@ defmodule SelectoComponents.Views.Aggregate.Process do
                     }
                   )
 
-                {:field, {:raw_sql, case_sql}, alias}
+                {:field, selector, alias}
               else
                 default_group_selector(col, alias)
               end
@@ -483,45 +469,35 @@ defmodule SelectoComponents.Views.Aggregate.Process do
   defp datetime_gb_proc(col, config, presentation_context) do
     format = Map.get(config, "format")
     bucket_ranges = Map.get(config, "bucket_ranges")
-    field_with_alias = aggregate_field_ref(col.colid)
 
     case format do
       "age_buckets" when is_binary(bucket_ranges) and bucket_ranges != "" ->
-        # Generate CASE expression for age buckets in group by.
-        # Joined fields need their fully-qualified reference, not the pivot alias.
-        case_sql =
-          BucketParser.generate_bucket_case_sql(
-            "(CURRENT_DATE - DATE(#{field_with_alias}))",
-            bucket_ranges,
-            :integer
-          )
-
-        {:raw_sql, case_sql}
+        BucketParser.bucket_selector(
+          col.colid,
+          bucket_ranges,
+          :elapsed_days,
+          %{temporal_options: temporal_options(col, presentation_context)}
+        )
 
       "custom_buckets" when is_binary(bucket_ranges) and bucket_ranges != "" ->
-        case_sql =
-          BucketParser.generate_bucket_case_sql(
-            field_with_alias,
-            bucket_ranges,
-            :date
-          )
-
-        {:raw_sql, case_sql}
+        BucketParser.bucket_selector(
+          col.colid,
+          bucket_ranges,
+          :date,
+          %{temporal_options: temporal_options(col, presentation_context)}
+        )
 
       "year_buckets" when is_binary(bucket_ranges) and bucket_ranges != "" ->
-        case_sql =
-          BucketParser.generate_bucket_case_sql(
-            year_bucket_extract_sql(col, field_with_alias, presentation_context),
-            bucket_ranges,
-            :integer
-          )
-
-        {:raw_sql, case_sql}
+        BucketParser.bucket_selector(
+          col.colid,
+          bucket_ranges,
+          :year,
+          %{temporal_options: temporal_options(col, presentation_context)}
+        )
 
       format when is_binary(format) and format not in ["", "default"] ->
         maybe_timezone_aware_datetime_selector(
           col,
-          field_with_alias,
           SqlSafety.datetime_grouping_format(format),
           presentation_context
         )
@@ -530,36 +506,18 @@ defmodule SelectoComponents.Views.Aggregate.Process do
         # Default to day format
         maybe_timezone_aware_datetime_selector(
           col,
-          field_with_alias,
           "YYYY-MM-DD",
           presentation_context
         )
     end
   end
 
-  defp aggregate_field_ref(colid) do
-    colid_str = to_string(colid)
-    if String.contains?(colid_str, "."), do: colid_str, else: "selecto_root." <> colid_str
-  end
-
   defp runtime_presentation_context(params) when is_map(params) do
     Map.get(params, "_presentation_context", %{})
   end
 
-  defp maybe_timezone_aware_datetime_selector(col, field_ref, format, presentation_context) do
-    if timezone_grouping_applicable?(col, presentation_context) do
-      {:raw_sql, timezone_aware_to_char_sql(col, field_ref, format, presentation_context)}
-    else
-      {:to_char, {col.colid, format}}
-    end
-  end
-
-  defp year_bucket_extract_sql(col, field_ref, presentation_context) do
-    if timezone_grouping_applicable?(col, presentation_context) do
-      "EXTRACT(YEAR FROM #{timezone_grouping_expression(col, field_ref, presentation_context)})"
-    else
-      "EXTRACT(YEAR FROM #{field_ref})"
-    end
+  defp maybe_timezone_aware_datetime_selector(col, format, presentation_context) do
+    {:datetime_format, col.colid, format, temporal_options(col, presentation_context)}
   end
 
   defp timezone_grouping_applicable?(col, presentation_context) do
@@ -568,18 +526,16 @@ defmodule SelectoComponents.Views.Aggregate.Process do
       runtime_timezone(presentation_context) != ""
   end
 
-  defp timezone_aware_to_char_sql(col, field_ref, format, presentation_context) do
-    "to_char(#{timezone_grouping_expression(col, field_ref, presentation_context)}, '#{format}')"
-  end
+  defp temporal_options(col, presentation_context) do
+    options = %{epoch_storage: Selecto.Temporal.epoch_storage(col)}
 
-  defp timezone_grouping_expression(col, field_ref, presentation_context) do
-    timezone = runtime_timezone(presentation_context)
-    storage_timezone = storage_timezone(col)
-
-    case Selecto.Temporal.epoch_storage(col) do
-      :unix_seconds -> "to_timestamp(#{field_ref}) AT TIME ZONE '#{timezone}'"
-      :unix_milliseconds -> "to_timestamp((#{field_ref}) / 1000.0) AT TIME ZONE '#{timezone}'"
-      _ -> "(#{field_ref} AT TIME ZONE '#{storage_timezone}') AT TIME ZONE '#{timezone}'"
+    if timezone_grouping_applicable?(col, presentation_context) do
+      Map.merge(options, %{
+        timezone: runtime_timezone(presentation_context),
+        storage_timezone: storage_timezone(col)
+      })
+    else
+      options
     end
   end
 

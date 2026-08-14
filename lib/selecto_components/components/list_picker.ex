@@ -1966,38 +1966,10 @@ defmodule SelectoComponents.Components.ListPicker do
   defp icon_key_from_format(format) when format in [:percentage, :percent], do: :percentage
   defp icon_key_from_format(_), do: nil
 
-  defp normalize_type_family(type) when type in [:id, :integer, :float, :decimal], do: :number
-
-  defp normalize_type_family(type)
-       when type in [:utc_datetime, :naive_datetime, :date, :datetime, :timestamp],
-       do: :date
-
-  defp normalize_type_family(:boolean), do: :boolean
-  defp normalize_type_family(type) when type in [:string, :text, :citext, :tsvector], do: :text
-  defp normalize_type_family(:time), do: :time
-  defp normalize_type_family(:uuid), do: :uuid
-  defp normalize_type_family(:binary), do: :binary
-
-  defp normalize_type_family(type)
-       when type in [:lookup, :star_dimension, :tag_dimension, :component, :link],
-       do: :relation
-
-  defp normalize_type_family({:array, _}), do: :list
-  defp normalize_type_family(type) when type in [:map, :json, :jsonb], do: :json
-
-  defp normalize_type_family(type)
-       when type in [
-              :geometry,
-              :geography,
-              :point,
-              :linestring,
-              :polygon,
-              :multipoint,
-              :multilinestring,
-              :multipolygon,
-              :geometrycollection
-            ],
-       do: :spatial
-
-  defp normalize_type_family(_), do: :unknown
+  defp normalize_type_family(type) do
+    case Selecto.TypeFamily.of(type) do
+      :text_search -> :text
+      family -> family
+    end
+  end
 end

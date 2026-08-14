@@ -20,6 +20,36 @@ defmodule SelectoComponents.FormTest do
     end
   end
 
+  defmodule OptionAdapter do
+    @behaviour Selecto.DB.Adapter
+
+    @impl true
+    def name, do: :option_test
+
+    @impl true
+    def connect(connection), do: {:ok, connection}
+
+    @impl true
+    def execute(connection, query, params, _opts), do: execute_raw(connection, query, params)
+
+    @impl true
+    def execute_raw(connection, query, params) do
+      case connection.query(query, params) do
+        {:ok, result} -> {:ok, Map.put_new(result, :columns, ["id", "name"])}
+        {:error, reason} -> {:error, reason}
+      end
+    end
+
+    @impl true
+    def placeholder(index), do: ["$", Integer.to_string(index)]
+
+    @impl true
+    def quote_identifier(identifier), do: ~s("#{identifier}")
+
+    @impl true
+    def supports?(_feature), do: false
+  end
+
   test "renders an always-visible controller summary when collapsed" do
     html = render_component(Form, base_assigns(%{show_view_configurator: false}))
 
@@ -284,7 +314,7 @@ defmodule SelectoComponents.FormTest do
       )
 
     assert_received {:option_query, query, 100}
-    assert query =~ "FROM categories"
+    assert query =~ ~s(FROM "categories")
     assert html =~ ~s(name="promoted_filters[f1][value][]")
     assert html =~ ~s(data-promoted-filter-multiselect="true")
     assert html =~ ~s(<option value="1" selected>)
@@ -658,7 +688,7 @@ defmodule SelectoComponents.FormTest do
           estimate: %{type: :integer, name: "Estimate", colid: :estimate},
           amount: %{type: :decimal, name: "Amount", colid: :amount},
           due_on: %{type: :date, name: "Due On", colid: :due_on},
-          search: %{type: :tsvector, name: "Search", colid: :search}
+          search: %{type: :text_search_document, name: "Search", colid: :search}
         },
         associations: %{}
       },
@@ -772,6 +802,6 @@ defmodule SelectoComponents.FormTest do
       joins: %{}
     }
 
-    Selecto.configure(domain, OptionRepo)
+    Selecto.configure(domain, OptionRepo, adapter: OptionAdapter)
   end
 end

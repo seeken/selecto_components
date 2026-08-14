@@ -2,6 +2,21 @@
 CHANGES
 =======
 
+V 0.5.0 - Adapter-Neutral Runtime Boundary
+-------------------------------------------
+
+- Removed Postgrex fallbacks, PostgreSQL SQLSTATE/type handling, `$N`
+  placeholder assumptions, and the `postgrex_opts` execution field.
+- Routed reads through explicit Selecto runtime providers and normalized
+  adapter results/errors.
+- Removed debug-time SQL interpolation and dialect token rewriting; Components
+  now copies adapter-rendered parameterized SQL and lists values separately.
+- Replaced raw date/time, text-normalization, and bucket SQL with typed Selecto
+  intent; Components no longer emits PostgreSQL casts, intervals, functions,
+  or case-insensitive operators.
+- Raised the Selecto package baseline to `0.5.0` and added a blocking
+  PostgreSQL production-boundary gate.
+
 V 0.4.13 - Fail-Closed LiveView Query and Action Boundaries
 -----------------------------------------------------------
 

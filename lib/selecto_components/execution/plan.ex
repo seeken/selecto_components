@@ -102,7 +102,7 @@ defmodule SelectoComponents.Execution.Plan do
   defp rebuild_selecto(old_selecto) do
     Selecto.configure(
       old_selecto.domain,
-      old_selecto.postgrex_opts,
+      old_selecto.connection,
       adapter: old_selecto.adapter,
       validate: false
     )

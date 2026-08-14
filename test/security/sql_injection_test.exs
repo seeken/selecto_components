@@ -82,12 +82,12 @@ defmodule SelectoComponents.Security.SqlInjectionTest do
     assert SqlSafety.timezone("Not/A_Real_Zone", nil) == nil
   end
 
-  test "aggregate raw SQL rejects injected format and storage timezone values" do
+  test "aggregate grouping rejects injected format and storage timezone values" do
     columns = %{
       "occurred_at" => instant_column("Etc/UTC'; DROP TABLE records; --")
     }
 
-    [{_column, {:field, {:raw_sql, sql}, "Occurred At"}}] =
+    [{_column, selector}] =
       AggregateProcess.group_by(
         %{
           "g1" => %{
@@ -101,9 +101,13 @@ defmodule SelectoComponents.Security.SqlInjectionTest do
         %{timezone: "America/New_York"}
       )
 
-    assert sql =~ "AT TIME ZONE 'Etc/UTC'"
-    assert sql =~ "'YYYY-MM-DD'"
-    refute sql =~ "DROP TABLE"
+    assert {:field,
+            {:datetime_format, :occurred_at, "YYYY-MM-DD",
+             %{
+               epoch_storage: nil,
+               timezone: "America/New_York",
+               storage_timezone: "Etc/UTC"
+             }}, "Occurred At"} = selector
   end
 
   test "aggregate grouping ignores an injected runtime timezone" do
@@ -123,13 +127,14 @@ defmodule SelectoComponents.Security.SqlInjectionTest do
         %{timezone: "Etc/UTC'; DROP TABLE records; --"}
       )
 
-    assert {:field, {:to_char, {:occurred_at, "YYYY-MM"}}, "Occurred At"} = selector
+    assert {:field, {:datetime_format, :occurred_at, "YYYY-MM", %{epoch_storage: nil}},
+            "Occurred At"} = selector
   end
 
-  test "graph raw SQL rejects injected format values" do
+  test "graph grouping rejects injected format values" do
     columns = %{"occurred_at" => instant_column()}
 
-    [{_column, {:field, {:raw_sql, sql}, _alias}}] =
+    [{_column, selector}] =
       GraphProcess.group_by_fields(
         %{
           "g1" => %{
@@ -142,7 +147,12 @@ defmodule SelectoComponents.Security.SqlInjectionTest do
         %{timezone: "Europe/Berlin"}
       )
 
-    assert sql =~ "'YYYY-MM-DD'"
-    refute sql =~ "DELETE FROM"
+    assert {:field,
+            {:datetime_format, :occurred_at, "YYYY-MM-DD",
+             %{
+               epoch_storage: nil,
+               timezone: "Europe/Berlin",
+               storage_timezone: "Etc/UTC"
+             }}, _alias} = selector
   end
 end

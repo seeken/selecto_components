@@ -108,7 +108,7 @@ defmodule SelectoComponents.Form.ColumnCatalog do
   defp base_selecto(%Selecto{} = selecto) do
     Selecto.configure(
       selecto.domain,
-      selecto.postgrex_opts,
+      selecto.connection,
       adapter: selecto.adapter,
       validate: false
     )

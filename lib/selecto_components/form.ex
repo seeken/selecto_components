@@ -1456,7 +1456,10 @@ defmodule SelectoComponents.Form do
       polymorphic_filter?(filter) ->
         :unsupported
 
-      controller_filter_field_type(selecto, filter) == :tsvector ->
+      Selecto.AdapterSupport.type_family(
+        Map.get(selecto, :adapter),
+        controller_filter_field_type(selecto, filter)
+      ) == :text_search ->
         :text_search
 
       controller_datetime_filter?(selecto, filter, comp) ->

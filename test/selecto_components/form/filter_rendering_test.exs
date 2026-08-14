@@ -7,6 +7,16 @@ defmodule SelectoComponents.Form.FilterRenderingTest do
 
   defmodule TestMySQLAdapter do
     def name, do: :mysql
+
+    def capability(:text_search) do
+      %{
+        feature: :text_search,
+        supported?: true,
+        modes: [:natural, :websearch, :plain, :boolean, :query_expansion],
+        default_mode: :natural,
+        help: "Native text search with natural-language, boolean, or query-expansion modes."
+      }
+    end
   end
 
   describe "static_filter_options/1" do

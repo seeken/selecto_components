@@ -361,14 +361,14 @@ defmodule SelectoComponents.Views.Aggregate.Component do
     case field do
       {:field, {:coalesce, [inner_field | _]}, _} ->
         case inner_field do
-          {:to_char, {field_name, _format}} -> Atom.to_string(field_name)
+          {:datetime_format, field_name, _format, _options} -> to_string(field_name)
           field_id when is_atom(field_id) -> Atom.to_string(field_id)
           field_id when is_binary(field_id) -> field_id
           _ -> "id"
         end
 
-      {:field, {:to_char, {field_name, _format}}, _} ->
-        Atom.to_string(field_name)
+      {:field, {:datetime_format, field_name, _format, _options}, _} ->
+        to_string(field_name)
 
       {:field, field_id, _} when is_atom(field_id) ->
         Atom.to_string(field_id)
@@ -807,7 +807,7 @@ defmodule SelectoComponents.Views.Aggregate.Component do
         # Now that Selecto.field returns full definitions, we get all properties
         coldef =
           case field do
-            {:field, {:to_char, {field_name, _format}}, _alias} ->
+            {:field, {:datetime_format, field_name, _format, _options}, _alias} ->
               # Handle formatted date fields
               configured_column(assigns.selecto, field_name) ||
                 Selecto.field(assigns.selecto, field_name) || %{name: display_alias, format: nil}

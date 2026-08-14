@@ -44,7 +44,11 @@ defmodule SelectoComponents.Helpers.FiltersTest do
         redact_fields: [],
         columns: %{
           id: %{type: :integer, colid: "id", name: "ID"},
-          search_document: %{type: :tsvector, colid: "search_document", name: "Search Document"}
+          search_document: %{
+            type: :text_search_document,
+            colid: "search_document",
+            name: "Search Document"
+          }
         },
         associations: %{}
       },
@@ -190,7 +194,7 @@ defmodule SelectoComponents.Helpers.FiltersTest do
       end
     end
 
-    test "builds an Other-bucket raw sql filter" do
+    test "builds an Other-bucket portable normalized-text filter" do
       filters = %{
         "filters" => [
           %{
@@ -207,8 +211,9 @@ defmodule SelectoComponents.Helpers.FiltersTest do
 
       [filter] = Filters.filter_recurse(selecto(), filters, "filters")
 
-      assert {:raw_sql_filter, sql_filter} = filter
-      assert IO.iodata_to_binary(sql_filter) =~ " = ''"
+      assert {"title",
+              {:text_normalized, %{exclude_articles: ["a", "an", "the"], ignore_case: true}, ""}} =
+               filter
     end
 
     test "keeps STARTS with article stripping case-sensitive unless ignore_case is set" do
@@ -228,8 +233,9 @@ defmodule SelectoComponents.Helpers.FiltersTest do
 
       [filter] = Filters.filter_recurse(selecto(), filters, "filters")
 
-      assert {{:raw_sql, sql_expr}, {:like, "Of%"}} = filter
-      refute sql_expr =~ "LOWER("
+      assert {"title",
+              {:text_normalized, %{exclude_articles: ["a", "an", "the"], ignore_case: false},
+               {:like, "Of%"}}} = filter
     end
 
     test "supports case-insensitive contains filters" do
@@ -326,11 +332,8 @@ defmodule SelectoComponents.Helpers.FiltersTest do
         ]
       }
 
-      [filter] = Filters.filter_recurse(datetime_selecto(), filters, "filters")
-
-      assert {:raw_sql_filter, iodata} = filter
-      sql = IO.iodata_to_binary(iodata)
-      assert sql =~ "IN (1)"
+      assert [{"created_at", {:datetime_part, :isodow, {:in, [1]}}}] =
+               Filters.filter_recurse(datetime_selecto(), filters, "filters")
     end
 
     test "coerces epoch-backed datetime shortcuts to epoch integers" do
@@ -354,7 +357,7 @@ defmodule SelectoComponents.Helpers.FiltersTest do
       assert end_epoch > start_epoch
     end
 
-    test "uses epoch-aware SQL extraction for weekday filters" do
+    test "keeps epoch-backed weekday extraction as portable intent" do
       filters = %{
         "filters" => [
           %{
@@ -367,15 +370,11 @@ defmodule SelectoComponents.Helpers.FiltersTest do
         ]
       }
 
-      [filter] = Filters.filter_recurse(epoch_datetime_selecto(), filters, "filters")
-
-      assert {:raw_sql_filter, iodata} = filter
-      sql = IO.iodata_to_binary(iodata)
-      assert sql =~ ~s|TO_TIMESTAMP(("selecto_root"."occurred_at_epoch") / 1000.0)|
-      assert sql =~ "EXTRACT(ISODOW FROM"
+      assert [{"occurred_at_epoch", {:datetime_part, :isodow, {:in, [1]}}}] =
+               Filters.filter_recurse(epoch_datetime_selecto(), filters, "filters")
     end
 
-    test "quotes unusual domain identifiers in raw date extraction expressions" do
+    test "keeps unusual domain identifiers as data in portable date predicates" do
       field = ~s|occurred_at") OR TRUE --|
 
       domain = %{
@@ -407,11 +406,8 @@ defmodule SelectoComponents.Helpers.FiltersTest do
         ]
       }
 
-      [filter] = Filters.filter_recurse(Selecto.configure(domain, nil), filters, "filters")
-      assert {:raw_sql_filter, iodata} = filter
-
-      assert IO.iodata_to_binary(iodata) =~
-               ~s|"selecto_root"."occurred_at"") OR TRUE --"|
+      assert [{^field, {:datetime_part, :isodow, {:in, [1]}}}] =
+               Filters.filter_recurse(Selecto.configure(domain, nil), filters, "filters")
     end
   end
 

@@ -169,7 +169,10 @@ defmodule SelectoComponents.ScheduledExports.Service do
          {:ok, render_payload, stats} <-
            snapshot_runner(opts).render_snapshot(
              snapshot,
-             Keyword.get(opts, :snapshot_runner_opts, [])
+             Keyword.merge(
+               Keyword.get(opts, :snapshot_runner_opts, []),
+               Keyword.take(opts, [:runtime, :runtime_provider])
+             )
            ),
          {:ok, delivery_result} <-
            deliver_now(

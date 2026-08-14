@@ -163,7 +163,10 @@ defmodule SelectoComponents.Views.Graph.IntegrationTest do
       [{col, field_selector}] = view_set.x_axis_groups
       assert col.colid == :created_at
       assert elem(field_selector, 0) == :field
-      assert elem(field_selector, 1) == {:to_char, {:created_at, "YYYY"}}
+
+      assert elem(field_selector, 1) ==
+               {:datetime_format, :created_at, "YYYY", %{epoch_storage: nil}}
+
       assert elem(field_selector, 2) == "Year"
 
       # Simulate temporal query results

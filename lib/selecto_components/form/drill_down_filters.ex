@@ -213,7 +213,7 @@ defmodule SelectoComponents.Form.DrillDownFilters do
       String.match?(value, ~r/^\d{4}-\d{2}$/) ->
         handle_month_format(value, field_conf)
 
-      # YYYY-Q format (Postgres to_char quarter output, e.g. 2026-1)
+      # YYYY-Q format (adapter-normalized quarter output, e.g. 2026-1)
       String.match?(value, ~r/^\d{4}-[1-4]$/) ->
         handle_quarter_format(value, field_conf)
 

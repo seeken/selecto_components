@@ -624,43 +624,35 @@ defmodule SelectoComponents.Views.Graph.Process do
   defp datetime_group_by_processor(col, config, presentation_context) do
     format = config["format"]
     bucket_ranges = config["bucket_ranges"]
-    field_with_alias = graph_field_ref(col.colid)
 
     case format do
       "age_buckets" when is_binary(bucket_ranges) and bucket_ranges != "" ->
-        case_sql =
-          BucketParser.generate_bucket_case_sql(
-            "(CURRENT_DATE - DATE(#{field_with_alias}))",
-            bucket_ranges,
-            :integer
-          )
-
-        {:raw_sql, case_sql}
+        BucketParser.bucket_selector(
+          col.colid,
+          bucket_ranges,
+          :elapsed_days,
+          %{temporal_options: temporal_options(col, presentation_context)}
+        )
 
       "custom_buckets" when is_binary(bucket_ranges) and bucket_ranges != "" ->
-        case_sql =
-          BucketParser.generate_bucket_case_sql(
-            field_with_alias,
-            bucket_ranges,
-            :date
-          )
-
-        {:raw_sql, case_sql}
+        BucketParser.bucket_selector(
+          col.colid,
+          bucket_ranges,
+          :date,
+          %{temporal_options: temporal_options(col, presentation_context)}
+        )
 
       "year_buckets" when is_binary(bucket_ranges) and bucket_ranges != "" ->
-        case_sql =
-          BucketParser.generate_bucket_case_sql(
-            year_bucket_extract_sql(col, field_with_alias, presentation_context),
-            bucket_ranges,
-            :integer
-          )
-
-        {:raw_sql, case_sql}
+        BucketParser.bucket_selector(
+          col.colid,
+          bucket_ranges,
+          :year,
+          %{temporal_options: temporal_options(col, presentation_context)}
+        )
 
       format when is_binary(format) and format not in ["", "default"] ->
         maybe_timezone_aware_datetime_selector(
           col,
-          field_with_alias,
           SqlSafety.datetime_grouping_format(format),
           presentation_context
         )
@@ -670,29 +662,12 @@ defmodule SelectoComponents.Views.Graph.Process do
     end
   end
 
-  defp graph_field_ref(colid) do
-    colid_str = to_string(colid)
-    if String.contains?(colid_str, "."), do: colid_str, else: "selecto_root." <> colid_str
-  end
-
   defp runtime_presentation_context(params) when is_map(params) do
     Map.get(params, "_presentation_context", %{})
   end
 
-  defp maybe_timezone_aware_datetime_selector(col, field_ref, format, presentation_context) do
-    if timezone_grouping_applicable?(col, presentation_context) do
-      {:raw_sql, timezone_aware_to_char_sql(col, field_ref, format, presentation_context)}
-    else
-      {:to_char, {col.colid, format}}
-    end
-  end
-
-  defp year_bucket_extract_sql(col, field_ref, presentation_context) do
-    if timezone_grouping_applicable?(col, presentation_context) do
-      "EXTRACT(YEAR FROM #{timezone_grouping_expression(col, field_ref, presentation_context)})"
-    else
-      "EXTRACT(YEAR FROM #{field_ref})"
-    end
+  defp maybe_timezone_aware_datetime_selector(col, format, presentation_context) do
+    {:datetime_format, col.colid, format, temporal_options(col, presentation_context)}
   end
 
   defp timezone_grouping_applicable?(col, presentation_context) do
@@ -701,18 +676,16 @@ defmodule SelectoComponents.Views.Graph.Process do
       runtime_timezone(presentation_context) != ""
   end
 
-  defp timezone_aware_to_char_sql(col, field_ref, format, presentation_context) do
-    "to_char(#{timezone_grouping_expression(col, field_ref, presentation_context)}, '#{format}')"
-  end
+  defp temporal_options(col, presentation_context) do
+    options = %{epoch_storage: Selecto.Temporal.epoch_storage(col)}
 
-  defp timezone_grouping_expression(col, field_ref, presentation_context) do
-    timezone = runtime_timezone(presentation_context)
-    storage_timezone = storage_timezone(col)
-
-    case Selecto.Temporal.epoch_storage(col) do
-      :unix_seconds -> "to_timestamp(#{field_ref}) AT TIME ZONE '#{timezone}'"
-      :unix_milliseconds -> "to_timestamp((#{field_ref}) / 1000.0) AT TIME ZONE '#{timezone}'"
-      _ -> "(#{field_ref} AT TIME ZONE '#{storage_timezone}') AT TIME ZONE '#{timezone}'"
+    if timezone_grouping_applicable?(col, presentation_context) do
+      Map.merge(options, %{
+        timezone: runtime_timezone(presentation_context),
+        storage_timezone: storage_timezone(col)
+      })
+    else
+      options
     end
   end
 

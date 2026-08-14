@@ -79,7 +79,7 @@ defmodule SelectoComponents.Components.SqlDebug do
                   <ul class="text-xs font-mono">
                     <%= for {param, idx} <- Enum.with_index(@params, 1) do %>
                       <li class="py-1">
-                        <span style="color: var(--sc-text-muted);">$<%= idx %>:</span>
+                        <span style="color: var(--sc-text-muted);">Parameter <%= idx %>:</span>
                         <span style="color: var(--sc-text-primary);"><%= inspect(param) %></span>
                       </li>
                     <% end %>

@@ -7,24 +7,26 @@ defmodule SelectoComponents.ExportedViews.Renderer do
 
   @spec render_snapshot(map(), keyword()) :: {:ok, map(), map()} | {:error, term()}
   def render_snapshot(snapshot, opts \\ []) when is_map(snapshot) do
-    selecto =
-      Selecto.configure(snapshot.domain, snapshot.postgrex_opts,
-        adapter: snapshot.adapter,
-        validate: false
-      )
+    with {:ok, runtime} <- SelectoComponents.RuntimeProvider.resolve(snapshot, opts) do
+      selecto =
+        Selecto.configure(snapshot.domain, runtime.connection,
+          adapter: runtime.adapter,
+          validate: false
+        )
 
-    assigns =
-      snapshot.views
-      |> StateBuilder.initial_assigns(selecto)
-      |> Map.put(:path, snapshot[:path])
-      |> Map.put(:sort_by, Keyword.get(opts, :sort_by))
+      assigns =
+        snapshot.views
+        |> StateBuilder.initial_assigns(selecto)
+        |> Map.put(:path, snapshot[:path])
+        |> Map.put(:sort_by, Keyword.get(opts, :sort_by))
 
-    socket = %Phoenix.LiveView.Socket{assigns: assigns}
-    params = normalize_params(snapshot.params)
-    rendered_socket = ParamsState.view_from_params(params, socket)
-    render_payload = build_render_payload(rendered_socket.assigns, params)
+      socket = %Phoenix.LiveView.Socket{assigns: assigns}
+      params = normalize_params(snapshot.params)
+      rendered_socket = ParamsState.view_from_params(params, socket)
+      render_payload = build_render_payload(rendered_socket.assigns, params)
 
-    {:ok, render_payload, render_stats(render_payload)}
+      {:ok, render_payload, render_stats(render_payload)}
+    end
   rescue
     error -> {:error, error}
   end

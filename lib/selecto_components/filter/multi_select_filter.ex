@@ -11,6 +11,8 @@ defmodule SelectoComponents.Filter.MultiSelectFilter do
 
   use Phoenix.LiveComponent
 
+  alias SelectoComponents.DBSupport
+
   @identifier_regex ~r/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/
 
   @impl true
@@ -164,7 +166,6 @@ defmodule SelectoComponents.Filter.MultiSelectFilter do
     field_config = socket.assigns[:field_config] || %{}
     field = socket.assigns[:field]
     selecto = socket.assigns[:selecto]
-    connection = socket.assigns[:repo] || selecto.connection
 
     # Parse field name to get schema and field
     if is_binary(field) && String.contains?(field, ".") do
@@ -199,7 +200,7 @@ defmodule SelectoComponents.Filter.MultiSelectFilter do
             end
 
           # Query options
-          options = query_table_options(connection, table, id_field, display_field, limit)
+          options = query_table_options(selecto, table, id_field, display_field, limit)
 
           # Parse currently selected IDs from value
           current_value = socket.assigns[:value] || ""
@@ -223,22 +224,23 @@ defmodule SelectoComponents.Filter.MultiSelectFilter do
   end
 
   # Query database for ID+name pairs
-  defp query_table_options(connection, table, id_field, display_field, limit) do
+  defp query_table_options(selecto, table, id_field, display_field, limit) do
     require Logger
 
-    with {:ok, safe_table} <- safe_sql_identifier(table),
-         {:ok, safe_id_field} <- safe_sql_identifier(id_field),
-         {:ok, safe_display_field} <- safe_sql_identifier(display_field) do
+    with {:ok, safe_table} <- safe_sql_identifier(selecto, table),
+         {:ok, safe_id_field} <- safe_sql_identifier(selecto, id_field),
+         {:ok, safe_display_field} <- safe_sql_identifier(selecto, display_field),
+         {:ok, placeholder} <- placeholder(selecto, 1) do
       query = """
       SELECT #{safe_id_field} as id, #{safe_display_field} as name
       FROM #{safe_table}
       WHERE #{safe_display_field} IS NOT NULL
       ORDER BY #{safe_display_field}
-      LIMIT $1
+      LIMIT #{placeholder}
       """
 
-      case execute_options_query(connection, query, [limit]) do
-        {:ok, %{rows: rows}} ->
+      case DBSupport.execute_raw_query(selecto, query, [limit], ["id", "name"]) do
+        {:ok, {rows, _columns, _aliases}} ->
           Enum.map(rows, fn [id, name] ->
             %{id: normalize_option_id(id), name: to_string(name)}
           end)
@@ -254,47 +256,41 @@ defmodule SelectoComponents.Filter.MultiSelectFilter do
     end
   end
 
-  defp execute_options_query(connection, query, params) when is_atom(connection) do
-    cond do
-      function_exported?(connection, :query, 2) ->
-        connection.query(query, params)
+  defp safe_sql_identifier(selecto, value) when is_atom(value),
+    do: safe_sql_identifier(selecto, Atom.to_string(value))
 
-      function_exported?(connection, :query, 3) ->
-        connection.query(query, params, [])
-
-      true ->
-        do_postgrex_query(connection, query, params)
-    end
-  end
-
-  defp execute_options_query(connection, query, params) when is_pid(connection) do
-    do_postgrex_query(connection, query, params)
-  end
-
-  defp execute_options_query(_connection, _query, _params), do: {:error, :invalid_connection}
-
-  defp do_postgrex_query(connection, query, params) do
-    if Code.ensure_loaded?(Postgrex) do
-      apply(Postgrex, :query, [connection, query, params])
-    else
-      {:error, :postgrex_not_available}
-    end
-  end
-
-  defp safe_sql_identifier(value) when is_atom(value),
-    do: safe_sql_identifier(Atom.to_string(value))
-
-  defp safe_sql_identifier(value) when is_binary(value) do
+  defp safe_sql_identifier(selecto, value) when is_binary(value) do
     trimmed = String.trim(value)
 
     if Regex.match?(@identifier_regex, trimmed) do
-      {:ok, trimmed}
+      adapter = DBSupport.adapter(selecto)
+
+      if Selecto.AdapterSupport.callback_available?(adapter, :quote_identifier, 1) do
+        quoted =
+          trimmed
+          |> String.split(".")
+          |> Enum.map_join(".", &adapter.quote_identifier/1)
+
+        {:ok, quoted}
+      else
+        {:error, :identifier_quoting_unavailable}
+      end
     else
       {:error, :invalid_identifier}
     end
   end
 
-  defp safe_sql_identifier(_value), do: {:error, :invalid_identifier}
+  defp safe_sql_identifier(_selecto, _value), do: {:error, :invalid_identifier}
+
+  defp placeholder(selecto, index) do
+    adapter = DBSupport.adapter(selecto)
+
+    if Selecto.AdapterSupport.callback_available?(adapter, :placeholder, 1) do
+      {:ok, adapter.placeholder(index) |> IO.iodata_to_binary()}
+    else
+      {:error, :placeholder_unavailable}
+    end
+  end
 
   # Parse comma-separated IDs from value string
   defp parse_ids(value) when is_binary(value) do

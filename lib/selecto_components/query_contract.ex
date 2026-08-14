@@ -93,6 +93,8 @@ defmodule SelectoComponents.QueryContract do
   """
   @spec json_document(term(), keyword()) :: result()
   def json_document(input, opts \\ []) do
+    opts = infer_domain_view_modes(input, opts)
+
     with {:ok, contract, diagnostics} <- build(input) do
       document =
         contract
@@ -283,6 +285,50 @@ defmodule SelectoComponents.QueryContract do
 
   defp params_schema_document(opts) do
     Map.merge(@default_params_schema, option_map(Keyword.get(opts, :params_schema, %{})))
+  end
+
+  defp infer_domain_view_modes(input, opts) do
+    domain = query_contract_input(input)
+
+    if map_view_configured?(domain) and not view_modes_explicit?(opts) do
+      opts
+      |> Keyword.put(:view_modes, @default_context.view_modes ++ [:map])
+      |> Keyword.update(
+        :params_schema,
+        map_params_schema(),
+        &Map.merge(option_map(&1), map_params_schema())
+      )
+    else
+      opts
+    end
+  end
+
+  defp map_view_configured?(domain) when is_map(domain) do
+    case map_value(domain, :map_view) do
+      config when is_map(config) -> map_size(config) > 0
+      _other -> false
+    end
+  end
+
+  defp map_view_configured?(_domain), do: false
+
+  defp view_modes_explicit?(opts) do
+    context = option_map(Keyword.get(opts, :context, %{}))
+
+    Keyword.has_key?(opts, :view_modes) or
+      Map.has_key?(context, :view_modes) or
+      Map.has_key?(context, "view_modes")
+  end
+
+  defp map_params_schema do
+    %{
+      view_mode: %{type: :enum, values: @default_context.view_modes ++ [:map], default: :detail},
+      map: %{
+        selected: %{type: :array, items: :field_id},
+        filters: %{type: :array, items: :filter},
+        order_by: %{type: :array, items: :order_by}
+      }
+    }
   end
 
   defp maybe_put_actions(contract, input, opts) do

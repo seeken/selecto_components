@@ -13,7 +13,7 @@ defmodule SelectoComponents.Views.Aggregate.Aggregate.Config do
     # Handle formatted date tuples
     item_str =
       case assigns[:item] do
-        {:to_char, {field, _format}} -> to_string(field)
+        {:datetime_format, field, _format, _options} -> to_string(field)
         {_func, field} when is_binary(field) -> to_string(field)
         item -> to_string(item || "")
       end

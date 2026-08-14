@@ -240,9 +240,13 @@ defmodule SelectoComponents.Views.Aggregate.ProcessTest do
         nil
       )
 
-    assert {:field, {:raw_sql, sql}, "Created At"} = selector
-    assert sql =~ "EXTRACT(YEAR FROM selecto_root.created_at)"
-    assert sql =~ "CASE WHEN"
+    assert {:field,
+            {:bucket, :created_at,
+             %{
+               kind: :year_increment,
+               increment: 5,
+               temporal_options: %{epoch_storage: nil}
+             }}, "Created At"} = selector
   end
 
   test "group by supports postgres datetime atom year buckets" do
@@ -267,9 +271,13 @@ defmodule SelectoComponents.Views.Aggregate.ProcessTest do
         nil
       )
 
-    assert {:field, {:raw_sql, sql}, "Attendance Created"} = selector
-    assert sql =~ "EXTRACT(YEAR FROM selecto_root.atnd_created)"
-    assert sql =~ "CASE WHEN"
+    assert {:field,
+            {:bucket, :atnd_created,
+             %{
+               kind: :year_increment,
+               increment: 5,
+               temporal_options: %{epoch_storage: nil}
+             }}, "Attendance Created"} = selector
   end
 
   test "group by uses viewer timezone for instant datetime formatting" do
@@ -294,10 +302,13 @@ defmodule SelectoComponents.Views.Aggregate.ProcessTest do
         %{timezone: "America/New_York"}
       )
 
-    assert {:field, {:raw_sql, sql}, "Created At"} = selector
-
-    assert sql ==
-             "to_char((selecto_root.created_at AT TIME ZONE 'Etc/UTC') AT TIME ZONE 'America/New_York', 'YYYY-MM')"
+    assert {:field,
+            {:datetime_format, :created_at, "YYYY-MM",
+             %{
+               epoch_storage: nil,
+               timezone: "America/New_York",
+               storage_timezone: "Etc/UTC"
+             }}, "Created At"} = selector
   end
 
   test "group by preserves composite datetime formats with viewer timezone" do
@@ -329,10 +340,13 @@ defmodule SelectoComponents.Views.Aggregate.ProcessTest do
         %{timezone: "Europe/Berlin"}
       )
 
-    assert {:field, {:raw_sql, sql}, "Published At Usec"} = selector
-
-    assert sql ==
-             "to_char((selecto_root.published_at_usec AT TIME ZONE 'Etc/UTC') AT TIME ZONE 'Europe/Berlin', 'YYYY-MM-DD HH24')"
+    assert {:field,
+            {:datetime_format, :published_at_usec, "YYYY-MM-DD HH24",
+             %{
+               epoch_storage: nil,
+               timezone: "Europe/Berlin",
+               storage_timezone: "Etc/UTC"
+             }}, "Published At Usec"} = selector
   end
 
   test "group by uses viewer timezone for epoch-backed instant year buckets" do
@@ -366,10 +380,17 @@ defmodule SelectoComponents.Views.Aggregate.ProcessTest do
         %{timezone: "America/New_York"}
       )
 
-    assert {:field, {:raw_sql, sql}, "Occurred At"} = selector
-
-    assert sql =~
-             "EXTRACT(YEAR FROM to_timestamp(selecto_root.occurred_at_epoch) AT TIME ZONE 'America/New_York')"
+    assert {:field,
+            {:bucket, :occurred_at_epoch,
+             %{
+               kind: :year_increment,
+               increment: 5,
+               temporal_options: %{
+                 epoch_storage: :unix_seconds,
+                 timezone: "America/New_York",
+                 storage_timezone: "Etc/UTC"
+               }
+             }}, "Occurred At"} = selector
   end
 
   test "group by leaves naive datetime formatting unchanged" do
@@ -393,7 +414,8 @@ defmodule SelectoComponents.Views.Aggregate.ProcessTest do
         %{timezone: "America/New_York"}
       )
 
-    assert {:field, {:to_char, {:created_at, "YYYY-MM"}}, "Created At"} = selector
+    assert {:field, {:datetime_format, :created_at, "YYYY-MM", %{epoch_storage: nil}},
+            "Created At"} = selector
   end
 
   test "group by preserves joined field references for datetime year buckets" do
@@ -418,9 +440,13 @@ defmodule SelectoComponents.Views.Aggregate.ProcessTest do
         nil
       )
 
-    assert {:field, {:raw_sql, sql}, "Delivery Team Inserted At"} = selector
-    assert sql =~ "EXTRACT(YEAR FROM delivery_team.inserted_at)"
-    refute sql =~ "EXTRACT(YEAR FROM t.inserted_at)"
+    assert {:field,
+            {:bucket, "delivery_team.inserted_at",
+             %{
+               kind: :year_increment,
+               increment: 5,
+               temporal_options: %{epoch_storage: nil}
+             }}, "Delivery Team Inserted At"} = selector
   end
 
   test "view does not wrap UUID group-bys in text coalesce" do

@@ -8,8 +8,7 @@ defmodule SelectoComponents.Views.Aggregate.Form do
   defp get_field_for_item(selecto, item) do
     field_name =
       case item do
-        # Handle formatted date tuple {:to_char, {"field_name", "format"}}
-        {:to_char, {field, _format}} -> field
+        {:datetime_format, field, _format, _options} -> field
         # Handle other extraction tuples if any
         {_func, field} when is_binary(field) -> field
         # Regular field name
@@ -372,7 +371,7 @@ defmodule SelectoComponents.Views.Aggregate.Form do
   defp column_display_name(columns, item, col) do
     item_str =
       case item do
-        {:to_char, {field, _format}} -> to_string(field)
+        {:datetime_format, field, _format, _options} -> to_string(field)
         {_func, field} when is_binary(field) -> field
         value -> to_string(value || "")
       end

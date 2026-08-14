@@ -319,7 +319,10 @@ defmodule SelectoComponents.Views.Graph.ProcessTest do
       [{col, field_selector}] = view_set.x_axis_groups
       assert col.colid == :created_at
       assert elem(field_selector, 0) == :field
-      assert elem(field_selector, 1) == {:to_char, {:created_at, "YYYY-MM"}}
+
+      assert elem(field_selector, 1) ==
+               {:datetime_format, :created_at, "YYYY-MM", %{epoch_storage: nil}}
+
       assert elem(field_selector, 2) == "Month"
     end
 
@@ -349,7 +352,8 @@ defmodule SelectoComponents.Views.Graph.ProcessTest do
       {view_set, _} = Process.view(nil, params, datetime_columns, [], nil)
       [{_col, field_selector}] = view_set.x_axis_groups
 
-      assert {:field, {:to_char, {:created_at, "YYYY-Q"}}, "Quarter"} = field_selector
+      assert {:field, {:datetime_format, :created_at, "YYYY-Q", %{epoch_storage: nil}}, "Quarter"} =
+               field_selector
     end
 
     test "supports postgres datetime atom format tokens in graph grouping", %{columns: columns} do
@@ -378,7 +382,8 @@ defmodule SelectoComponents.Views.Graph.ProcessTest do
       {view_set, _} = Process.view(nil, params, datetime_columns, [], nil)
       [{_col, field_selector}] = view_set.x_axis_groups
 
-      assert {:field, {:to_char, {:atnd_created, "YYYY-Q"}}, "Quarter"} = field_selector
+      assert {:field, {:datetime_format, :atnd_created, "YYYY-Q", %{epoch_storage: nil}},
+              "Quarter"} = field_selector
     end
 
     test "uses viewer timezone for instant datetime graph grouping", %{columns: columns} do
@@ -416,10 +421,13 @@ defmodule SelectoComponents.Views.Graph.ProcessTest do
       {view_set, _} = Process.view(nil, params, datetime_columns, [], nil)
       [{_col, field_selector}] = view_set.x_axis_groups
 
-      assert {:field, {:raw_sql, sql}, "Month"} = field_selector
-
-      assert sql ==
-               "to_char((selecto_root.created_at AT TIME ZONE 'Etc/UTC') AT TIME ZONE 'America/New_York', 'YYYY-MM')"
+      assert {:field,
+              {:datetime_format, :created_at, "YYYY-MM",
+               %{
+                 epoch_storage: nil,
+                 timezone: "America/New_York",
+                 storage_timezone: "Etc/UTC"
+               }}, "Month"} = field_selector
     end
 
     test "preserves composite datetime formats with viewer timezone in graph grouping", %{
@@ -460,10 +468,13 @@ defmodule SelectoComponents.Views.Graph.ProcessTest do
       {view_set, _} = Process.view(nil, params, datetime_columns, [], nil)
       [{_col, field_selector}] = view_set.x_axis_groups
 
-      assert {:field, {:raw_sql, sql}, "Hour"} = field_selector
-
-      assert sql ==
-               "to_char((selecto_root.published_at_usec AT TIME ZONE 'Etc/UTC') AT TIME ZONE 'Europe/Berlin', 'YYYY-MM-DD HH24')"
+      assert {:field,
+              {:datetime_format, :published_at_usec, "YYYY-MM-DD HH24",
+               %{
+                 epoch_storage: nil,
+                 timezone: "Europe/Berlin",
+                 storage_timezone: "Etc/UTC"
+               }}, "Hour"} = field_selector
     end
 
     test "supports year buckets in graph grouping", %{columns: columns} do
@@ -493,8 +504,13 @@ defmodule SelectoComponents.Views.Graph.ProcessTest do
       {view_set, _} = Process.view(nil, params, datetime_columns, [], nil)
       [{_col, field_selector}] = view_set.x_axis_groups
 
-      assert {:field, {:raw_sql, sql}, "Year Buckets"} = field_selector
-      assert sql =~ "EXTRACT(YEAR FROM selecto_root.created_at)"
+      assert {:field,
+              {:bucket, :created_at,
+               %{
+                 kind: :year_increment,
+                 increment: 5,
+                 temporal_options: %{epoch_storage: nil}
+               }}, "Year Buckets"} = field_selector
     end
 
     test "uses viewer timezone for instant year buckets in graph grouping", %{columns: columns} do
@@ -535,10 +551,17 @@ defmodule SelectoComponents.Views.Graph.ProcessTest do
       {view_set, _} = Process.view(nil, params, datetime_columns, [], nil)
       [{_col, field_selector}] = view_set.x_axis_groups
 
-      assert {:field, {:raw_sql, sql}, "Year Buckets"} = field_selector
-
-      assert sql =~
-               "EXTRACT(YEAR FROM to_timestamp(selecto_root.occurred_at_epoch) AT TIME ZONE 'America/New_York')"
+      assert {:field,
+              {:bucket, :occurred_at_epoch,
+               %{
+                 kind: :year_increment,
+                 increment: 5,
+                 temporal_options: %{
+                   epoch_storage: :unix_seconds,
+                   timezone: "America/New_York",
+                   storage_timezone: "Etc/UTC"
+                 }
+               }}, "Year Buckets"} = field_selector
     end
 
     test "generates proper order_by and group_by clauses", %{columns: columns} do
@@ -661,7 +684,9 @@ defmodule SelectoComponents.Views.Graph.ProcessTest do
 
       [{col, field_selector}] = result
       assert col.colid == :created_at
-      assert field_selector == {:field, {:to_char, {:created_at, "YYYY"}}, "Year"}
+
+      assert field_selector ==
+               {:field, {:datetime_format, :created_at, "YYYY", %{epoch_storage: nil}}, "Year"}
     end
 
     test "keeps naive datetime grouping unchanged when timezone is present", %{columns: columns} do
@@ -673,7 +698,9 @@ defmodule SelectoComponents.Views.Graph.ProcessTest do
 
       [{col, field_selector}] = result
       assert col.colid == :created_at
-      assert field_selector == {:field, {:to_char, {:created_at, "YYYY"}}, "Year"}
+
+      assert field_selector ==
+               {:field, {:datetime_format, :created_at, "YYYY", %{epoch_storage: nil}}, "Year"}
     end
 
     test "processes custom columns with requires_select", %{columns: columns} do

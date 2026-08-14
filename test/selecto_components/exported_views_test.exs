@@ -7,8 +7,8 @@ defmodule SelectoComponents.ExportedViewsTest do
     assigns = %{
       selecto: %{
         domain: %{name: "orders"},
-        postgrex_opts: :repo,
-        adapter: Selecto.DB.PostgreSQL
+        connection: :repo,
+        adapter: SelectoComponents.TestAdapter
       },
       view_config: %{
         view_mode: "detail",
@@ -40,17 +40,17 @@ defmodule SelectoComponents.ExportedViewsTest do
     assert snapshot.context == "tenant:1:/orders"
   end
 
-  test "build_create_attrs redacts secrets from persisted connection options" do
+  test "build_create_attrs never persists connection options or live handles" do
     assigns = %{
       selecto: %{
         domain: %{name: "orders"},
-        postgrex_opts: [
+        connection: [
           hostname: "db",
           username: "demo",
           password: "secret",
           ssl_opts: [cacertfile: "/tmp/ca.pem"]
         ],
-        adapter: Selecto.DB.PostgreSQL
+        adapter: SelectoComponents.TestAdapter
       },
       view_config: %{view_mode: "detail", filters: [], views: %{detail: %{selected: []}}},
       views: [{:detail, SelectoComponents.Views.Detail, "Detail", %{}}],
@@ -59,10 +59,28 @@ defmodule SelectoComponents.ExportedViewsTest do
 
     attrs = ExportedViews.build_create_attrs(assigns, %{"name" => "Safe export"})
     assert {:ok, snapshot} = ExportedViews.decode_term(attrs.snapshot_blob)
-    assert snapshot.postgrex_opts[:hostname] == "db"
-    assert snapshot.postgrex_opts[:username] == "demo"
-    refute Keyword.has_key?(snapshot.postgrex_opts, :password)
-    refute Keyword.has_key?(snapshot.postgrex_opts, :ssl_opts)
+    refute Map.has_key?(snapshot, :connection)
+    assert snapshot.adapter == SelectoComponents.TestAdapter
+    assert snapshot.adapter_name == :test
+    assert snapshot.runtime_key == "/orders"
+    assert snapshot.capability_evidence.text_search.supported?
+  end
+
+  test "persisted snapshots require a matching live runtime at render time" do
+    snapshot = %{adapter: SelectoComponents.TestAdapter, runtime_key: "tenant:1:/orders"}
+
+    assert {:error, %Selecto.Error{type: :configuration_error}} =
+             SelectoComponents.RuntimeProvider.resolve(snapshot)
+
+    assert {:ok, %Selecto.Runtime.Context{connection: :repo}} =
+             SelectoComponents.RuntimeProvider.resolve(snapshot,
+               runtime: {SelectoComponents.TestAdapter, :repo}
+             )
+
+    assert {:error, %Selecto.Error{details: %{reason: %{reason: :adapter_mismatch}}}} =
+             SelectoComponents.RuntimeProvider.resolve(snapshot,
+               runtime: {String, :repo}
+             )
   end
 
   test "decode_term rejects unsafe binaries" do

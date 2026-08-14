@@ -100,9 +100,8 @@ defmodule SelectoComponents.ErrorHandling.ErrorSanitizer do
   end
 
   defp remove_parameter_values(message) do
-    # Remove parameter values like $1, $2 or actual values in brackets
+    # Remove displayed values without interpreting adapter-specific bind markers.
     message
-    |> String.replace(~r/\$\d+/, "[param]")
     |> String.replace(~r/\[.*?\]/, "[value]")
     |> String.replace(~r/= '.*?'/, "= [value]")
     |> String.replace(~r/= ".*?"/, "= [value]")
@@ -123,7 +122,7 @@ defmodule SelectoComponents.ErrorHandling.ErrorSanitizer do
       String.contains?(message, ["password", "secret", "token", "key"]) ->
         "A security-related error occurred"
 
-      String.contains?(message, ["database", "postgres", "mysql", "sqlite"]) ->
+      String.contains?(message, "database") ->
         "A database error occurred"
 
       String.contains?(message, ["connection", "timeout", "refused"]) ->

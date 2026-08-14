@@ -268,16 +268,12 @@ defmodule SelectoComponents.Helpers.Filters do
         value = get_string_value(filter)
 
         if BucketParser.exclude_articles?(Map.get(filter, "exclude_articles"), false) do
-          normalized_expr =
-            BucketParser.normalized_text_sql(
-              filter_field,
-              %{"exclude_articles" => true, "ignore_case" => ignore_case}
-            )
+          options = text_normalization_options(true, ignore_case)
 
           normalized_value =
             if(ignore_case, do: String.downcase(String.trim(value)), else: String.trim(value))
 
-          {{:raw_sql, normalized_expr}, normalized_value}
+          {filter_field, {:text_normalized, options, normalized_value}}
         else
           {filpart, transform.(value)}
         end
@@ -311,18 +307,15 @@ defmodule SelectoComponents.Helpers.Filters do
         value = get_string_value(filter)
 
         if BucketParser.exclude_articles?(Map.get(filter, "exclude_articles"), false) do
-          normalized_expr =
-            BucketParser.normalized_text_sql(
-              filter_field,
-              %{"exclude_articles" => true, "ignore_case" => ignore_case}
-            )
+          options = text_normalization_options(true, ignore_case)
 
           normalized_value =
             value
             |> String.trim()
             |> then(fn v -> if(ignore_case, do: String.downcase(v), else: v) end)
 
-          {{:raw_sql, normalized_expr}, {:like, sanitize_like_value(normalized_value) <> "%"}}
+          {filter_field,
+           {:text_normalized, options, {:like, sanitize_like_value(normalized_value) <> "%"}}}
         else
           value = transform.(value)
           {filpart, {:like, sanitize_like_value(value) <> "%"}}
@@ -342,11 +335,7 @@ defmodule SelectoComponents.Helpers.Filters do
         exclude_articles =
           BucketParser.exclude_articles?(Map.get(filter, "exclude_articles"), true)
 
-        normalized_expr =
-          BucketParser.normalized_text_sql(
-            filter_field,
-            %{"exclude_articles" => exclude_articles}
-          )
+        options = text_normalization_options(exclude_articles, true)
 
         prefix =
           filter
@@ -358,19 +347,14 @@ defmodule SelectoComponents.Helpers.Filters do
           raise ArgumentError, "TEXT_PREFIX requires a non-empty prefix value"
         end
 
-        {{:raw_sql, normalized_expr}, {:like, sanitize_like_value(prefix) <> "%"}}
+        {filter_field, {:text_normalized, options, {:like, sanitize_like_value(prefix) <> "%"}}}
 
       "TEXT_PREFIX_OTHER" ->
         exclude_articles =
           BucketParser.exclude_articles?(Map.get(filter, "exclude_articles"), true)
 
-        normalized_expr =
-          BucketParser.normalized_text_sql(
-            filter_field,
-            %{"exclude_articles" => exclude_articles}
-          )
-
-        {:raw_sql_filter, ["(", normalized_expr, " = '')"]}
+        options = text_normalization_options(exclude_articles, true)
+        {filter_field, {:text_normalized, options, ""}}
 
       "LIKE" ->
         value = transform.(get_string_value(filter))
@@ -434,6 +418,13 @@ defmodule SelectoComponents.Helpers.Filters do
       _ ->
         raise ArgumentError, "unsupported UUID comparison operator #{inspect(comp_norm)}"
     end
+  end
+
+  defp text_normalization_options(exclude_articles, ignore_case) do
+    %{
+      exclude_articles: if(exclude_articles, do: ~w(a an the), else: []),
+      ignore_case: ignore_case
+    }
   end
 
   defp parse_uuid(value) when is_binary(value) do
@@ -593,75 +584,27 @@ defmodule SelectoComponents.Helpers.Filters do
 
       "WEEKDAY" ->
         weekday = parse_bounded_integer(Map.get(filter, "value"), 1, 7)
-
-        {:raw_sql_filter,
-         [
-           "(EXTRACT(ISODOW FROM ",
-           date_filter_field_expr(filter, field_conf),
-           ")::int = ",
-           Integer.to_string(weekday),
-           ")"
-         ]}
+        {:datetime_part, :isodow, weekday}
 
       "WEEKDAY_SUN1" ->
         weekday = parse_bounded_integer(Map.get(filter, "value"), 1, 7)
-
-        {:raw_sql_filter,
-         [
-           "(to_char(",
-           date_filter_field_expr(filter, field_conf),
-           ", 'D')::int = ",
-           Integer.to_string(weekday),
-           ")"
-         ]}
+        {:datetime_part, :weekday_sunday_one, weekday}
 
       "WEEK_OF_YEAR" ->
         week_value = parse_week_of_year_value(Map.get(filter, "value"))
-
-        {:raw_sql_filter,
-         [
-           "(to_char(",
-           date_filter_field_expr(filter, field_conf),
-           ", 'YYYY-WW') = '",
-           week_value,
-           "')"
-         ]}
+        {:datetime_format, "YYYY-WW", week_value}
 
       "MONTH_OF_YEAR" ->
         month = parse_bounded_integer(Map.get(filter, "value"), 1, 12)
-
-        {:raw_sql_filter,
-         [
-           "(EXTRACT(MONTH FROM ",
-           date_filter_field_expr(filter, field_conf),
-           ")::int = ",
-           Integer.to_string(month),
-           ")"
-         ]}
+        {:datetime_part, :month, month}
 
       "DAY_OF_MONTH" ->
         day = parse_bounded_integer(Map.get(filter, "value"), 1, 31)
-
-        {:raw_sql_filter,
-         [
-           "(EXTRACT(DAY FROM ",
-           date_filter_field_expr(filter, field_conf),
-           ")::int = ",
-           Integer.to_string(day),
-           ")"
-         ]}
+        {:datetime_part, :day, day}
 
       "HOUR_OF_DAY" ->
         hour = parse_bounded_integer(Map.get(filter, "value"), 0, 23)
-
-        {:raw_sql_filter,
-         [
-           "(EXTRACT(HOUR FROM ",
-           date_filter_field_expr(filter, field_conf),
-           ")::int = ",
-           Integer.to_string(hour),
-           ")"
-         ]}
+        {:datetime_part, :hour, hour}
 
       _ ->
         # Default behavior for other comparison operators
@@ -934,10 +877,7 @@ defmodule SelectoComponents.Helpers.Filters do
 
     cond do
       date_like_type in [:datetime, :timestamp, :naive_datetime, :utc_datetime, :date] ->
-        date_filter =
-          Map.put(f, "__selecto_date_field_expr", quote_date_filter_field(selecto, filter_key))
-
-        case safe_make_date_filter(date_filter, column) do
+        case safe_make_date_filter(f, column) do
           {:ok, {:or, conditions}} ->
             or_filters =
               Enum.map(conditions, fn filter_val ->
@@ -945,12 +885,6 @@ defmodule SelectoComponents.Helpers.Filters do
               end)
 
             {:ok, [{:or, or_filters}]}
-
-          {:ok, {:raw_sql_filter, _iodata} = filter_val} ->
-            {:ok, [filter_val]}
-
-          {:ok, {{:raw_sql, _expr}, _rhs} = filter_val} ->
-            {:ok, [filter_val]}
 
           {:ok, filter_val} ->
             {:ok, [{filter_key, filter_val}]}
@@ -979,7 +913,7 @@ defmodule SelectoComponents.Helpers.Filters do
           {:error, reason} -> {:skip, {:invalid_uuid, reason}}
         end
 
-      column.type == :tsvector ->
+      Selecto.TypeFamily.of(column.type) == :text_search ->
         {:ok, [make_text_search_filter(f)]}
 
       column.type == :boolean ->
@@ -1870,22 +1804,8 @@ defmodule SelectoComponents.Helpers.Filters do
     Date.new!(year, month, day)
   end
 
-  defp weekday_set_filter(filter, weekdays, field_conf) when is_list(weekdays) do
-    weekday_list =
-      weekdays
-      |> Enum.uniq()
-      |> Enum.sort()
-      |> Enum.map(&Integer.to_string/1)
-      |> Enum.join(",")
-
-    {:raw_sql_filter,
-     [
-       "(EXTRACT(ISODOW FROM ",
-       date_filter_field_expr(filter, field_conf),
-       ")::int IN (",
-       weekday_list,
-       "))"
-     ]}
+  defp weekday_set_filter(_filter, weekdays, _field_conf) when is_list(weekdays) do
+    {:datetime_part, :isodow, {:in, weekdays |> Enum.uniq() |> Enum.sort()}}
   end
 
   defp parse_bounded_integer(value, min_value, max_value) do
@@ -1905,39 +1825,6 @@ defmodule SelectoComponents.Helpers.Filters do
       value
     else
       "1970-01"
-    end
-  end
-
-  defp date_filter_field_expr(filter, field_conf) do
-    case Map.get(filter, "__selecto_date_field_expr") do
-      field_expr when is_binary(field_expr) and field_expr != "" ->
-        epoch_datetime_expr(field_expr, field_conf)
-
-      _ ->
-        ~s("selecto_root"."id")
-    end
-  end
-
-  defp quote_date_filter_field(selecto, field) do
-    adapter = Selecto.AdapterSQL.adapter(selecto)
-
-    field
-    |> to_string()
-    |> String.split(".", trim: true)
-    |> then(fn
-      [single] -> ["selecto_root", single]
-      qualified -> qualified
-    end)
-    |> Enum.map_join(".", fn identifier ->
-      adapter.quote_identifier(identifier) |> IO.iodata_to_binary()
-    end)
-  end
-
-  defp epoch_datetime_expr(field_expr, field_conf) do
-    case Selecto.Temporal.epoch_storage(field_conf) do
-      :unix_seconds -> "TO_TIMESTAMP(#{field_expr})"
-      :unix_milliseconds -> "TO_TIMESTAMP((#{field_expr}) / 1000.0)"
-      _ -> field_expr
     end
   end
 

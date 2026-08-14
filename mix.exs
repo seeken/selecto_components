@@ -4,7 +4,7 @@ defmodule SelectoComponents.MixProject do
   def project do
     [
       app: :selecto_components,
-      version: "0.4.13",
+      version: "0.5.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       description:
@@ -66,7 +66,7 @@ defmodule SelectoComponents.MixProject do
     if use_local_selecto?() do
       {:selecto, path: "../selecto"}
     else
-      {:selecto, ">= 0.4.10 and < 0.6.0"}
+      {:selecto, ">= 0.5.0 and < 0.6.0"}
     end
   end
 
@@ -100,7 +100,13 @@ defmodule SelectoComponents.MixProject do
         "esbuild package --minify"
       ],
       "credo.atom_audit": ["credo -C atom_audit --all-priorities"],
-      precommit: ["compile --warnings-as-errors", "format --check-formatted", "credo", "test"]
+      precommit: [
+        "compile --warnings-as-errors",
+        "format --check-formatted",
+        "cmd scripts/check_postgresql_boundary.sh",
+        "credo",
+        "test"
+      ]
     ]
   end
 end

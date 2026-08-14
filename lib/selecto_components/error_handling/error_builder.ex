@@ -180,9 +180,10 @@ defmodule SelectoComponents.ErrorHandling.ErrorBuilder do
 
   defp infer_stage_from_error({:error, :timeout}), do: :timeout
 
-  defp infer_stage_from_error({:error, error}) when is_map(error) do
-    if DBSupport.database_error?(error), do: :db_execute, else: :unknown
-  end
+  defp infer_stage_from_error({:error, %Selecto.Error{} = error}),
+    do: infer_stage_from_error(error)
+
+  defp infer_stage_from_error({:error, error}) when is_map(error), do: :unknown
 
   defp infer_stage_from_error({:error, _}), do: :unknown
   defp infer_stage_from_error({:exit, :timeout}), do: :timeout
@@ -217,9 +218,10 @@ defmodule SelectoComponents.ErrorHandling.ErrorBuilder do
     end
   end
 
-  defp infer_category({:error, error}, _stage) when is_map(error) do
-    if DBSupport.database_error?(error), do: :database, else: :unknown
-  end
+  defp infer_category({:error, %Selecto.Error{} = error}, stage),
+    do: infer_category(error, stage)
+
+  defp infer_category({:error, error}, _stage) when is_map(error), do: :unknown
 
   defp infer_category({:error, :timeout}, _stage), do: :timeout
   defp infer_category({:error, :closed}, _stage), do: :connection
@@ -236,9 +238,7 @@ defmodule SelectoComponents.ErrorHandling.ErrorBuilder do
   defp infer_category(%Phoenix.LiveView.Socket{}, _stage), do: :lifecycle
   defp infer_category(:timeout, _stage), do: :timeout
 
-  defp infer_category(error, _stage) when is_map(error) do
-    if DBSupport.database_error?(error), do: :database, else: :unknown
-  end
+  defp infer_category(error, _stage) when is_map(error), do: :unknown
 
   defp infer_category(_raw_error, _stage), do: :unknown
 

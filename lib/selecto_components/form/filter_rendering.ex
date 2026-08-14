@@ -157,7 +157,8 @@ defmodule SelectoComponents.Form.FilterRendering do
             date_specific_datetime_comp?(value_for(filter_value, "comp")) ->
           render_datetime_filter(assigns)
 
-        field_type == :tsvector ->
+        Selecto.AdapterSupport.type_family(Map.get(assigns.selecto, :adapter), field_type) ==
+            :text_search ->
           render_text_search_filter(assigns)
 
         true ->
@@ -1856,10 +1857,9 @@ defmodule SelectoComponents.Form.FilterRendering do
   defp to_existing_atom_safe(_), do: :error
 
   @doc """
-  Render text search filter for tsvector columns.
+  Render a text-search filter using the configured adapter's portable modes.
 
-  This filter type uses PostgreSQL's full-text search with websearch_to_tsquery,
-  which supports natural language search queries including:
+  Web-style modes commonly support natural-language queries including:
   - Simple words: "matrix" finds documents containing "matrix"
   - Phrases: "the matrix" finds documents with those words near each other
   - OR searches: "matrix OR reloaded" finds documents with either word
@@ -2907,9 +2907,10 @@ defmodule SelectoComponents.Form.FilterRendering do
          query_where,
          query_params
        ) do
-    with {:ok, safe_table} <- safe_sql_identifier(table),
-         {:ok, safe_id_field} <- safe_sql_identifier(id_field),
-         {:ok, safe_display_field} <- safe_sql_identifier(display_field) do
+    with {:ok, safe_table} <- safe_sql_identifier(selecto, table),
+         {:ok, safe_id_field} <- safe_sql_identifier(selecto, id_field),
+         {:ok, safe_display_field} <- safe_sql_identifier(selecto, display_field),
+         {:ok, placeholder} <- options_placeholder(selecto, 1) do
       where_clause =
         if is_binary(query_where) and query_where != "", do: "AND #{query_where}", else: ""
 
@@ -2919,13 +2920,16 @@ defmodule SelectoComponents.Form.FilterRendering do
       WHERE #{safe_display_field} IS NOT NULL
       #{where_clause}
       ORDER BY #{safe_display_field}
-      LIMIT $1
+      LIMIT #{placeholder}
       """
 
-      connection = selecto.connection
-
-      case execute_options_query(connection, query, [limit | query_params]) do
-        {:ok, %{rows: rows}} ->
+      case SelectoComponents.DBSupport.execute_raw_query(
+             selecto,
+             query,
+             [limit | query_params],
+             ["id", "name"]
+           ) do
+        {:ok, {rows, _columns, _aliases}} ->
           Enum.map(rows, fn [id, name] ->
             %{id: normalize_option_id(id), name: to_string(name)}
           end)
@@ -2943,33 +2947,6 @@ defmodule SelectoComponents.Form.FilterRendering do
     e ->
       Logger.warning("Exception querying options for multi-select filter: #{inspect(e)}")
       []
-  end
-
-  defp execute_options_query(connection, query, params) when is_atom(connection) do
-    cond do
-      function_exported?(connection, :query, 2) ->
-        connection.query(query, params)
-
-      function_exported?(connection, :query, 3) ->
-        connection.query(query, params, [])
-
-      true ->
-        do_postgrex_query(connection, query, params)
-    end
-  end
-
-  defp execute_options_query(connection, query, params) when is_pid(connection) do
-    do_postgrex_query(connection, query, params)
-  end
-
-  defp execute_options_query(_connection, _query, _params), do: {:error, :invalid_connection}
-
-  defp do_postgrex_query(connection, query, params) do
-    if Code.ensure_loaded?(Postgrex) do
-      apply(Postgrex, :query, [connection, query, params])
-    else
-      {:error, :postgrex_not_available}
-    end
   end
 
   defp normalize_option_id(id) when is_binary(id) do
@@ -2992,20 +2969,41 @@ defmodule SelectoComponents.Form.FilterRendering do
 
   defp humanize_field(field), do: to_string(field)
 
-  defp safe_sql_identifier(value) when is_atom(value),
-    do: safe_sql_identifier(Atom.to_string(value))
+  defp safe_sql_identifier(selecto, value) when is_atom(value),
+    do: safe_sql_identifier(selecto, Atom.to_string(value))
 
-  defp safe_sql_identifier(value) when is_binary(value) do
+  defp safe_sql_identifier(selecto, value) when is_binary(value) do
     trimmed = String.trim(value)
 
     if Regex.match?(@identifier_regex, trimmed) do
-      {:ok, trimmed}
+      adapter = SelectoComponents.DBSupport.adapter(selecto)
+
+      if Selecto.AdapterSupport.callback_available?(adapter, :quote_identifier, 1) do
+        quoted =
+          trimmed
+          |> String.split(".")
+          |> Enum.map_join(".", &adapter.quote_identifier/1)
+
+        {:ok, quoted}
+      else
+        {:error, :identifier_quoting_unavailable}
+      end
     else
       {:error, :invalid_identifier}
     end
   end
 
-  defp safe_sql_identifier(_value), do: {:error, :invalid_identifier}
+  defp safe_sql_identifier(_selecto, _value), do: {:error, :invalid_identifier}
+
+  defp options_placeholder(selecto, index) do
+    adapter = SelectoComponents.DBSupport.adapter(selecto)
+
+    if Selecto.AdapterSupport.callback_available?(adapter, :placeholder, 1) do
+      {:ok, adapter.placeholder(index) |> IO.iodata_to_binary()}
+    else
+      {:error, :placeholder_unavailable}
+    end
+  end
 
   # Parse comma-separated IDs from value string
   defp parse_filter_ids(value) when is_binary(value) do

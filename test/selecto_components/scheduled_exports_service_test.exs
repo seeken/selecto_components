@@ -141,7 +141,11 @@ defmodule SelectoComponents.ScheduledExportsServiceTest do
 
   test "create list due and create_run use the scheduled export adapter" do
     assigns = %{
-      selecto: %{domain: %{name: "orders"}, postgrex_opts: [], adapter: Selecto.DB.PostgreSQL},
+      selecto: %{
+        domain: %{name: "orders"},
+        connection: [],
+        adapter: SelectoComponents.TestAdapter
+      },
       view_config: %{view_mode: "detail", filters: [], views: %{detail: %{selected: []}}},
       views: [{:detail, SelectoComponents.Views.Detail, "Detail", %{}}],
       path: "/orders",
@@ -264,7 +268,11 @@ defmodule SelectoComponents.ScheduledExportsServiceTest do
 
   test "run_scheduled_export executes a saved snapshot and records run metadata" do
     assigns = %{
-      selecto: %{domain: %{name: "orders"}, postgrex_opts: [], adapter: Selecto.DB.PostgreSQL},
+      selecto: %{
+        domain: %{name: "orders"},
+        connection: [],
+        adapter: SelectoComponents.TestAdapter
+      },
       view_config: %{view_mode: "detail", filters: [], views: %{detail: %{selected: []}}},
       views: [{:detail, SelectoComponents.Views.Detail, "Detail", %{}}],
       path: "/orders",
@@ -319,7 +327,11 @@ defmodule SelectoComponents.ScheduledExportsServiceTest do
 
   test "run_scheduled_export records failures on the run and definition" do
     assigns = %{
-      selecto: %{domain: %{name: "orders"}, postgrex_opts: [], adapter: Selecto.DB.PostgreSQL},
+      selecto: %{
+        domain: %{name: "orders"},
+        connection: [],
+        adapter: SelectoComponents.TestAdapter
+      },
       view_config: %{view_mode: "detail", filters: [], views: %{detail: %{selected: []}}},
       views: [{:detail, SelectoComponents.Views.Detail, "Detail", %{}}],
       path: "/orders",
@@ -360,7 +372,11 @@ defmodule SelectoComponents.ScheduledExportsServiceTest do
 
   test "run_scheduled_export skips before rendering when capability is denied" do
     assigns = %{
-      selecto: %{domain: %{name: "orders"}, postgrex_opts: [], adapter: Selecto.DB.PostgreSQL},
+      selecto: %{
+        domain: %{name: "orders"},
+        connection: [],
+        adapter: SelectoComponents.TestAdapter
+      },
       view_config: %{view_mode: "detail", filters: [], views: %{detail: %{selected: []}}},
       views: [{:detail, SelectoComponents.Views.Detail, "Detail", %{}}],
       path: "/orders",
@@ -426,7 +442,11 @@ defmodule SelectoComponents.ScheduledExportsServiceTest do
 
   test "run_scheduled_export accepts a module capability resolver" do
     assigns = %{
-      selecto: %{domain: %{name: "orders"}, postgrex_opts: [], adapter: Selecto.DB.PostgreSQL},
+      selecto: %{
+        domain: %{name: "orders"},
+        connection: [],
+        adapter: SelectoComponents.TestAdapter
+      },
       view_config: %{view_mode: "detail", filters: [], views: %{detail: %{selected: []}}},
       views: [{:detail, SelectoComponents.Views.Detail, "Detail", %{}}],
       path: "/orders",

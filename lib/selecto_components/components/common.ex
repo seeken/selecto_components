@@ -231,7 +231,7 @@ defmodule SelectoComponents.Components.Common do
 
   defp field_item_key(item) do
     case item do
-      {:to_char, {field, _format}} -> to_string(field)
+      {:datetime_format, field, _format, _options} -> to_string(field)
       {_func, field} when is_binary(field) -> field
       value when is_atom(value) -> Atom.to_string(value)
       value when is_binary(value) -> value

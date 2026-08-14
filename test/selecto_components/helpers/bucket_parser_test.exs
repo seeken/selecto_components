@@ -3,35 +3,45 @@ defmodule SelectoComponents.Helpers.BucketParserTest do
 
   alias SelectoComponents.Helpers.BucketParser
 
-  describe "generate_bucket_case_sql/3" do
+  describe "bucket_selector/4" do
     test "does not treat */step as a date bucket format" do
-      assert BucketParser.generate_bucket_case_sql("selecto_root.inserted_at", "*/10", :date) ==
-               "selecto_root.inserted_at"
+      assert BucketParser.bucket_selector(:inserted_at, "*/10", :date) == :inserted_at
     end
 
-    test "maps custom date buckets to current-date-relative date comparisons" do
-      sql =
-        BucketParser.generate_bucket_case_sql(
-          "selecto_root.inserted_at",
-          "today, yesterday, 2-7, 8+",
-          :date
-        )
+    test "maps custom date buckets to portable relative-date intent" do
+      assert {:bucket, :inserted_at,
+              %{
+                kind: :date_relative_ranges,
+                ranges: [
+                  {"today", "today", "today"},
+                  {"yesterday", "yesterday", "yesterday"},
+                  {2, 7, "2-7"},
+                  {8, :infinity, "8+"}
+                ],
+                temporal_options: %{}
+              }} =
+               BucketParser.bucket_selector(
+                 :inserted_at,
+                 "today, yesterday, 2-7, 8+",
+                 :date
+               )
+    end
 
-      assert sql =~ "DATE(selecto_root.inserted_at) = CURRENT_DATE"
-      assert sql =~ "DATE(selecto_root.inserted_at) = CURRENT_DATE - INTERVAL '1 day'"
-
-      assert sql =~
-               "DATE(selecto_root.inserted_at) BETWEEN CURRENT_DATE - INTERVAL '7 day' AND CURRENT_DATE - INTERVAL '2 day'"
-
-      assert sql =~ "DATE(selecto_root.inserted_at) <= CURRENT_DATE - INTERVAL '8 day'"
+    test "maps year increments to portable year-bucket intent" do
+      assert {:bucket, :inserted_at,
+              %{
+                kind: :year_increment,
+                increment: 5,
+                temporal_options: %{timezone: "America/Denver"}
+              }} =
+               BucketParser.bucket_selector(:inserted_at, "*/5", :year, %{
+                 temporal_options: %{timezone: "America/Denver"}
+               })
     end
 
     test "rejects invalid increment shorthand values" do
-      assert BucketParser.generate_bucket_case_sql("selecto_root.price", "*/0", :integer) ==
-               "selecto_root.price"
-
-      assert BucketParser.generate_bucket_case_sql("selecto_root.price", "*/-5", :integer) ==
-               "selecto_root.price"
+      assert BucketParser.bucket_selector(:price, "*/0", :integer) == :price
+      assert BucketParser.bucket_selector(:price, "*/-5", :integer) == :price
     end
   end
 

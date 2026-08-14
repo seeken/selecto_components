@@ -55,59 +55,39 @@ defmodule SelectoComponents.Debug.DebugDisplay do
           <div :if={@debug_info[:query]} class="border-t border-gray-200 pt-2">
             <div class="flex items-center justify-between mb-2">
               <h5 class="font-medium text-gray-600">SQL Query</h5>
-              <div class="flex items-center gap-2">
-                <!-- Copy button fixed - COMPTASK-0099 -->
-                <button
-                  type="button"
-                  phx-click="copy_sql"
-                  phx-target={@myself}
-                  class="inline-flex items-center px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-xs font-medium transition-colors"
-                  title="Copy SQL to clipboard"
-                >
-                  <svg class="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                    />
-                  </svg>
-                  Copy
-                </button>
-                <button
-                  :if={@debug_info[:params] && length(@debug_info.params) > 0}
-                  type="button"
-                  phx-click="toggle_sql_mode"
-                  phx-target={@myself}
-                  class="inline-flex items-center px-2 py-1 bg-gray-500 hover:bg-gray-600 text-white rounded text-xs font-medium transition-colors"
-                >
-                  <%= if @show_interpolated do %>
-                    Show Parameterized
-                  <% else %>
-                    Show Interpolated
-                  <% end %>
-                </button>
-              </div>
+              <!-- Copy button fixed - COMPTASK-0099 -->
+              <button
+                type="button"
+                phx-click="copy_sql"
+                phx-target={@myself}
+                class="inline-flex items-center px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-xs font-medium transition-colors"
+                title="Copy parameterized SQL to clipboard"
+              >
+                <svg class="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 002 2z"
+                  />
+                </svg>
+                Copy
+              </button>
             </div>
-            <%= if @show_interpolated && @debug_info[:params] do %>
-              <div class="bg-gray-900 p-3 rounded border border-gray-700 overflow-x-auto">
-                {Phoenix.HTML.raw(
-                  format_sql_with_makeup(interpolate_params(@debug_info.query, @debug_info.params))
-                )}
-              </div>
-              <div class="mt-2 text-xs text-gray-600">
-                <span class="font-semibold">Note:</span>
-                This interpolated query can be copied and pasted directly into psql or other SQL tools.
-              </div>
-            <% else %>
-              <div class="bg-gray-900 p-3 rounded border border-gray-700 overflow-x-auto">
-                {Phoenix.HTML.raw(format_sql_with_makeup(@debug_info.query))}
-              </div>
-            <% end %>
+            <div class="bg-gray-900 p-3 rounded border border-gray-700 overflow-x-auto">
+              {Phoenix.HTML.raw(format_sql_with_makeup(@debug_info.query))}
+            </div>
+            <div
+              :if={@debug_info[:params] && length(@debug_info.params) > 0}
+              class="mt-2 text-xs text-gray-600"
+            >
+              <span class="font-semibold">Note:</span>
+              Parameter values are shown separately so the configured adapter's bind syntax remains intact.
+            </div>
           </div>
 
           <.debug_section
-            :if={@debug_info[:params] && !@show_interpolated}
+            :if={@debug_info[:params]}
             title="Parameters"
             content={@debug_info.params}
             type="list"
@@ -249,7 +229,6 @@ defmodule SelectoComponents.Debug.DebugDisplay do
      assign(socket,
        expanded: false,
        show_debug: false,
-       show_interpolated: false,
        debug_info: %{},
        metadata: %{}
      )}
@@ -286,28 +265,8 @@ defmodule SelectoComponents.Debug.DebugDisplay do
     {:noreply, assign(socket, expanded: !socket.assigns.expanded)}
   end
 
-  def handle_event("toggle_sql_mode", _, socket) do
-    {:noreply, assign(socket, show_interpolated: !socket.assigns.show_interpolated)}
-  end
-
   def handle_event("copy_sql", _params, socket) do
-    sql_to_copy =
-      if socket.assigns.show_interpolated do
-        # Get interpolated SQL
-        case socket.assigns.debug_info do
-          %{query: query, params: params} when is_binary(query) and is_list(params) ->
-            interpolate_params(query, params)
-
-          %{query: query} when is_binary(query) ->
-            query
-
-          _ ->
-            ""
-        end
-      else
-        # Get raw SQL
-        socket.assigns.debug_info[:query] || ""
-      end
+    sql_to_copy = socket.assigns.debug_info[:query] || ""
 
     # Push event to JavaScript hook to handle clipboard
     {:noreply, push_event(socket, "copy-to-clipboard", %{text: sql_to_copy})}
@@ -436,42 +395,6 @@ defmodule SelectoComponents.Debug.DebugDisplay do
   defp format_param_value(value) when is_boolean(value), do: if(value, do: "TRUE", else: "FALSE")
   defp format_param_value(value) when is_number(value), do: to_string(value)
   defp format_param_value(value), do: inspect(value, limit: 50)
-
-  defp interpolate_params(sql, params) when is_binary(sql) and is_list(params) do
-    # Replace $1, $2, etc. with actual parameter values
-    params
-    |> Enum.with_index(1)
-    |> Enum.reduce(sql, fn {value, index}, acc ->
-      # Escape the parameter value for SQL
-      escaped_value = escape_sql_value(value)
-      String.replace(acc, "$#{index}", escaped_value)
-    end)
-  end
-
-  defp interpolate_params(sql, _), do: sql
-
-  defp escape_sql_value(nil), do: "NULL"
-  defp escape_sql_value(true), do: "TRUE"
-  defp escape_sql_value(false), do: "FALSE"
-  defp escape_sql_value(value) when is_number(value), do: to_string(value)
-
-  defp escape_sql_value(value) when is_binary(value) do
-    # Escape single quotes by doubling them
-    escaped = String.replace(value, "'", "''")
-    "'#{escaped}'"
-  end
-
-  defp escape_sql_value(%DateTime{} = dt), do: "'#{DateTime.to_iso8601(dt)}'"
-  defp escape_sql_value(%Date{} = d), do: "'#{Date.to_iso8601(d)}'"
-  defp escape_sql_value(%Time{} = t), do: "'#{Time.to_iso8601(t)}'"
-
-  defp escape_sql_value(value) when is_list(value) do
-    # Handle arrays/lists
-    items = Enum.map(value, &escape_sql_value/1)
-    "ARRAY[#{Enum.join(items, ", ")}]"
-  end
-
-  defp escape_sql_value(value), do: "'#{inspect(value)}'"
 
   defp format_sql_with_makeup(sql) when is_binary(sql) do
     # Use Makeup to format and highlight SQL

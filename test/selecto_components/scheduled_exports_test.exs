@@ -8,8 +8,8 @@ defmodule SelectoComponents.ScheduledExportsTest do
     assigns = %{
       selecto: %{
         domain: %{name: "orders"},
-        postgrex_opts: [hostname: "db", username: "demo", password: "secret"],
-        adapter: Selecto.DB.PostgreSQL
+        connection: [hostname: "db", username: "demo", password: "secret"],
+        adapter: SelectoComponents.TestAdapter
       },
       view_config: %{
         view_mode: "aggregate",
@@ -74,12 +74,17 @@ defmodule SelectoComponents.ScheduledExportsTest do
     assert snapshot.params["view_mode"] == "aggregate"
     assert snapshot.context == "tenant:1:/orders"
     assert snapshot.tenant_context == %{tenant_id: 1}
-    refute Keyword.has_key?(snapshot.postgrex_opts, :password)
+    refute Map.has_key?(snapshot, :connection)
+    assert snapshot.runtime_key == "tenant:1:/orders"
   end
 
   test "build_create_attrs generates a public id when create payload sends a blank id" do
     assigns = %{
-      selecto: %{domain: %{name: "orders"}, postgrex_opts: [], adapter: Selecto.DB.PostgreSQL},
+      selecto: %{
+        domain: %{name: "orders"},
+        connection: [],
+        adapter: SelectoComponents.TestAdapter
+      },
       view_config: %{view_mode: "detail", filters: [], views: %{detail: %{selected: []}}},
       views: [{:detail, SelectoComponents.Views.Detail, "Detail", %{}}],
       path: "/orders",

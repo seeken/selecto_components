@@ -400,7 +400,7 @@ defmodule SelectoComponents.Router do
         "<" -> {field, {:lt, value}}
         "<=" -> {field, {:lte, value}}
         "like" -> {field, {:like, value}}
-        "ilike" -> {field, {:ilike, value}}
+        "case_insensitive_like" -> {field, {:case_insensitive_like, value}}
         "in" -> {field, {:in, value}}
         "not_in" -> {field, {:not_in, value}}
         "is_null" -> {field, {:is_null, true}}

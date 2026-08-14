@@ -9,7 +9,7 @@ defmodule SelectoComponents.ExportSnapshots do
 
   alias SelectoComponents.Form.ParamsState
 
-  @snapshot_version 1
+  @snapshot_version 2
 
   @doc """
   Build a persisted snapshot payload from current SelectoComponents assigns.
@@ -18,13 +18,17 @@ defmodule SelectoComponents.ExportSnapshots do
   def build_snapshot(assigns) when is_map(assigns) do
     selecto = Map.fetch!(assigns, :selecto)
 
+    adapter = Map.get(selecto, :adapter)
+
     %{
       version: @snapshot_version,
       params: ParamsState.view_config_to_params(Map.fetch!(assigns, :view_config)),
       views: Map.fetch!(assigns, :views),
       domain: Map.fetch!(selecto, :domain),
-      postgrex_opts: sanitize_connection(Map.get(selecto, :postgrex_opts)),
-      adapter: Map.get(selecto, :adapter),
+      adapter: adapter,
+      adapter_name: Selecto.AdapterSupport.adapter_name(adapter),
+      capability_evidence: snapshot_capabilities(adapter),
+      runtime_key: runtime_key(assigns, selecto),
       path: Map.get(assigns, :path) || Map.get(assigns, :my_path),
       context:
         Map.get(assigns, :scheduled_export_context) || Map.get(assigns, :exported_view_context) ||
@@ -87,31 +91,20 @@ defmodule SelectoComponents.ExportSnapshots do
 
   defp persistable_term?(_term), do: true
 
-  @doc false
-  def sanitize_connection(opts) when is_list(opts) do
-    Keyword.drop(opts, sensitive_keys())
+  defp snapshot_capabilities(adapter) do
+    %{text_search: Selecto.AdapterSupport.capability(adapter, :text_search)}
   end
 
-  def sanitize_connection(%{} = opts) do
-    Map.drop(opts, sensitive_keys() ++ Enum.map(sensitive_keys(), &to_string/1))
-  end
+  defp runtime_key(assigns, selecto) do
+    metadata =
+      case Map.get(selecto, :runtime) do
+        %Selecto.Runtime.Context{metadata: metadata} -> metadata
+        _runtime -> %{}
+      end
 
-  def sanitize_connection(other), do: other
-
-  defp sensitive_keys do
-    [
-      :password,
-      :passfile,
-      :ssl_key,
-      :sslkey,
-      :ssl_cert,
-      :sslcert,
-      :ssl_root_cert,
-      :sslrootcert,
-      :ssl_opts,
-      :secret,
-      :token,
-      :api_key
-    ]
+    Map.get(assigns, :runtime_key) || Map.get(metadata, :key) || Map.get(metadata, "key") ||
+      Map.get(assigns, :exported_view_context) || Map.get(assigns, :scheduled_export_context) ||
+      Map.get(assigns, :saved_view_context) || Map.get(assigns, :path) ||
+      Map.get(assigns, :my_path)
   end
 end
