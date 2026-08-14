@@ -624,6 +624,7 @@ defmodule SelectoComponents.ScheduledExports.ManagerTest do
         delivery_opts: [notify: self()]
       ],
       current_user_id: "42",
+      capability_resolver: fn _request -> Selecto.Capabilities.allow() end,
       selecto: Selecto.configure(domain(), nil),
       views: [{:detail, SelectoComponents.Views.Detail, "Detail", %{}}],
       view_config: %{view_mode: "detail", views: %{detail: %{selected: []}}, filters: []},

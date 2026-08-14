@@ -678,7 +678,7 @@ defmodule SelectoComponents.Modal.ActionFormModalTest do
     assert html =~ ~r/<textarea[^>]+name="inputs\[archive_reason\]"[^>]+rows="3"/
   end
 
-  test "submit_action_form normalizes declared boolean inputs while preserving extras" do
+  test "submit_action_form normalizes declared boolean inputs and drops undeclared keys" do
     action =
       Map.put(action(), "inputs", [
         %{"id" => "note", "type" => "string"},
@@ -694,16 +694,14 @@ defmodule SelectoComponents.Modal.ActionFormModalTest do
 
     assert updated_socket.assigns.form_inputs == %{
              "note" => "Ready",
-             "notify_customer" => false,
-             "unexpected" => "kept"
+             "notify_customer" => false
            }
 
     assert_receive {:selecto_action_form_submit, payload}
 
     assert payload.request["inputs"] == %{
              "note" => "Ready",
-             "notify_customer" => false,
-             "unexpected" => "kept"
+             "notify_customer" => false
            }
   end
 

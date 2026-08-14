@@ -12,15 +12,19 @@ defmodule SelectoComponents.CapabilityGate do
   @doc """
   Authorizes a component operation.
 
-  If no resolver is assigned, the operation is allowed for backwards
-  compatibility. Hosts can pass `:resolver`, `:actor`, `:tenant`, `:domain`,
-  `:target`, `:context`, or `:metadata` in opts, or assign matching
-  `:capability_*` values on the socket.
+  A resolver is required. Hosts can pass `:resolver`, `:actor`, `:tenant`,
+  `:domain`, `:target`, `:context`, or `:metadata` in opts, or assign matching
+  `:capability_*` values on the socket. Missing resolvers and unrecognized
+  resolver decisions fail closed.
   """
   def authorize(socket, capability, operation, opts \\ []) do
     case resolver(socket, opts) do
       nil ->
-        :ok
+        denied("Capability resolver is required.", %{
+          capability: capability,
+          operation: operation,
+          code: :capability_resolver_required
+        })
 
       resolver ->
         socket
@@ -144,7 +148,14 @@ defmodule SelectoComponents.CapabilityGate do
     denied("Operation is not allowed.", %{capability: capability, operation: operation})
   end
 
-  defp normalize_decision(_decision, _capability, _operation), do: :ok
+  defp normalize_decision(decision, capability, operation) do
+    denied("Capability resolver returned an invalid decision.", %{
+      capability: capability,
+      operation: operation,
+      code: :invalid_capability_decision,
+      decision: inspect(decision)
+    })
+  end
 
   defp denied(message, details) do
     {:error,

@@ -813,13 +813,25 @@ defmodule SelectoComponents.QueryContract.IntentValidator do
   defp item_field_id(_value), do: nil
 
   defp comparator_id(filter) when is_map(filter) do
-    map_get(filter, :comparator) ||
-      map_get(filter, :comp) ||
-      map_get(filter, :operator) ||
-      map_get(filter, :op)
+    (map_get(filter, :comparator) ||
+       map_get(filter, :comp) ||
+       map_get(filter, :operator) ||
+       map_get(filter, :op))
+    |> normalize_comparator()
   end
 
   defp comparator_id(_filter), do: nil
+
+  defp normalize_comparator("="), do: "eq"
+  defp normalize_comparator("!="), do: "neq"
+  defp normalize_comparator("<>"), do: "neq"
+  defp normalize_comparator(">"), do: "gt"
+  defp normalize_comparator(">="), do: "gte"
+  defp normalize_comparator("<"), do: "lt"
+  defp normalize_comparator("<="), do: "lte"
+  defp normalize_comparator("IN"), do: "in"
+  defp normalize_comparator("NOT IN"), do: "not_in"
+  defp normalize_comparator(value), do: value
 
   defp aggregate_function_id(metric) when is_map(metric) do
     map_get(metric, :function) ||

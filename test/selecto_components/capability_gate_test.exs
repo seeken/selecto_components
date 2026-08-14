@@ -47,4 +47,16 @@ defmodule SelectoComponents.CapabilityGateTest do
     assert request.context.view_mode == "detail"
     assert details["code"] == "module_gate_denied"
   end
+
+  test "fails closed without a resolver and for unknown decisions" do
+    socket = %{assigns: %{}}
+
+    assert {:error, {:capability_denied, _, %{"code" => "capability_resolver_required"}}} =
+             CapabilityGate.authorize(socket, "selecto.exports.csv", :export)
+
+    assert {:error, {:capability_denied, _, %{"code" => "invalid_resolver"}}} =
+             CapabilityGate.authorize(socket, "selecto.exports.csv", :export,
+               resolver: fn _request, _context, _opts -> :unknown end
+             )
+  end
 end

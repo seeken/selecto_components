@@ -28,6 +28,7 @@ defmodule SelectoComponents.Form.ExportOperationsTest do
         applied_view: nil,
         view_config: %{view_mode: "detail", views: %{}},
         export_delivery_module: DeliveryStub,
+        capability_resolver: fn _request -> Selecto.Capabilities.allow() end,
         path: "/orders",
         tenant_context: %{tenant_id: 7},
         current_user_id: "42",
@@ -62,6 +63,7 @@ defmodule SelectoComponents.Form.ExportOperationsTest do
         applied_view: nil,
         view_config: %{view_mode: "detail", views: %{}},
         export_delivery_module: nil,
+        capability_resolver: fn _request -> Selecto.Capabilities.allow() end,
         path: "/orders",
         flash: %{}
       }

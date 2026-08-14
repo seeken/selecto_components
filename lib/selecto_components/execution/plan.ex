@@ -6,13 +6,14 @@ defmodule SelectoComponents.Execution.Plan do
   plan that can be inspected and tested independently from query execution.
   """
 
-  import SelectoComponents.Helpers.Filters, only: [filter_recurse: 3]
+  import SelectoComponents.Helpers.Filters, only: [filter_recurse_strict: 3]
 
   alias SelectoComponents.Form
   alias SelectoComponents.Form.ColumnCatalog
   alias SelectoComponents.Execution.CTEs
   alias SelectoComponents.Form.ParamsState
   alias SelectoComponents.Presentation
+  alias SelectoComponents.QueryContract
   alias SelectoComponents.SafeAtom
   alias SelectoComponents.SubselectBuilder
   alias SelectoComponents.EnhancedTable.Sorting
@@ -28,7 +29,8 @@ defmodule SelectoComponents.Execution.Plan do
     :selected_view,
     :view_tuple,
     :view_set,
-    :view_meta
+    :view_meta,
+    :validation_errors
   ]
 
   @type t :: %__MODULE__{}
@@ -54,7 +56,14 @@ defmodule SelectoComponents.Execution.Plan do
     columns_list = ColumnCatalog.picker_columns(selecto)
     columns_map = build_columns_map(raw_columns)
     filters_by_section = build_filters_by_section(params)
-    filtered = filter_recurse(selecto, filters_by_section, "filters")
+    intent_validation = validate_intent(params, socket, selecto)
+
+    {filtered, filter_errors} =
+      case filter_recurse_strict(selecto, filters_by_section, "filters") do
+        {:ok, filters} -> {filters, []}
+        {:error, error} -> {[], [filter_build_error(error)]}
+      end
+
     selected_view = SafeAtom.to_view_mode(get_map_value(params, :view_mode))
     params = maybe_put_detail_page(params, selected_view, socket)
     view_tuple = Enum.find(socket.assigns.views, fn {id, _, _, _} -> id == selected_view end)
@@ -85,7 +94,8 @@ defmodule SelectoComponents.Execution.Plan do
       selected_view: selected_view,
       view_tuple: view_tuple,
       view_set: view_set,
-      view_meta: view_meta
+      view_meta: view_meta,
+      validation_errors: intent_validation.errors ++ filter_errors
     }
   end
 
@@ -132,6 +142,32 @@ defmodule SelectoComponents.Execution.Plan do
     |> Enum.reduce(%{}, fn f, acc ->
       Map.put(acc, Map.get(f, "section"), Map.get(acc, Map.get(f, "section"), []) ++ [f])
     end)
+  end
+
+  defp validate_intent(params, socket, selecto) do
+    contract = Map.get(socket.assigns, :query_contract, selecto)
+    opts = Map.get(socket.assigns, :query_contract_opts, [])
+    QueryContract.validate_intent(contract, execution_intent(params), opts)
+  end
+
+  defp execution_intent(params) do
+    filters =
+      params
+      |> Map.get("filters", %{})
+      |> Map.values()
+      |> Enum.filter(&(is_map(&1) and Map.get(&1, "is_section") not in ["Y", true, "true"]))
+
+    params
+    |> Map.put("filters", filters)
+  end
+
+  defp filter_build_error(error) do
+    %{
+      code: :filter_build_failed,
+      path: "filters",
+      message: "submitted filter could not be compiled",
+      reason: inspect(error)
+    }
   end
 
   defp maybe_put_detail_page(params, :detail, socket) do

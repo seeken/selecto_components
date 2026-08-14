@@ -630,15 +630,12 @@ defmodule SelectoComponents.Modal.ActionFormModal do
     end)
   end
 
-  defp only_active_inputs(inputs, active_input_defs, all_input_defs) do
+  defp only_active_inputs(inputs, active_input_defs, _all_input_defs) do
     active_ids = active_input_defs |> List.wrap() |> Enum.map(&Map.get(&1, "id")) |> MapSet.new()
-    declared_ids = all_input_defs |> List.wrap() |> Enum.map(&Map.get(&1, "id")) |> MapSet.new()
 
     inputs
     |> map_or_empty()
-    |> Enum.filter(fn {id, _value} ->
-      MapSet.member?(active_ids, id) or not MapSet.member?(declared_ids, id)
-    end)
+    |> Enum.filter(fn {id, _value} -> MapSet.member?(active_ids, id) end)
     |> Map.new()
   end
 
@@ -681,15 +678,7 @@ defmodule SelectoComponents.Modal.ActionFormModal do
       |> Enum.reject(fn {_id, value} -> value == :__selecto_omit_input__ end)
       |> Map.new()
 
-    defined_ids =
-      input_defs
-      |> Enum.map(&Map.get(&1, "id"))
-      |> MapSet.new()
-
-    inputs
-    |> Enum.reject(fn {key, _value} -> is_nil(key) or MapSet.member?(defined_ids, key) end)
-    |> Map.new()
-    |> Map.merge(normalized_defined)
+    normalized_defined
     |> Enum.reject(fn {key, _value} -> is_nil(key) end)
     |> Map.new()
   end

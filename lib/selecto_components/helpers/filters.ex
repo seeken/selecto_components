@@ -747,6 +747,20 @@ defmodule SelectoComponents.Helpers.Filters do
   rather than crashing the entire filter chain.
   """
   def filter_recurse(selecto, filters, section) do
+    {:ok, result} = do_filter_recurse(selecto, filters, section, :lenient)
+    result
+  end
+
+  @doc """
+  Builds filters for server-side execution and fails if any submitted filter
+  cannot be compiled. This prevents a restrictive filter from being silently
+  omitted and widening the result set.
+  """
+  def filter_recurse_strict(selecto, filters, section) do
+    do_filter_recurse(selecto, filters, section, :strict)
+  end
+
+  defp do_filter_recurse(selecto, filters, section, mode) do
     # Filter out any bucket_ranges strings that shouldn't be filters
     section_filters =
       Map.get(filters, section, [])
@@ -760,41 +774,51 @@ defmodule SelectoComponents.Helpers.Filters do
       end)
 
     result =
-      Enum.reduce(section_filters, [], fn filter_item, acc ->
-        case process_single_filter(selecto, filters, filter_item) do
+      Enum.reduce_while(section_filters, {:ok, []}, fn filter_item, {:ok, acc} ->
+        case process_single_filter(selecto, filters, filter_item, mode) do
           {:ok, filter_results} when is_list(filter_results) ->
-            acc ++ filter_results
+            {:cont, {:ok, acc ++ filter_results}}
 
           {:ok, filter_result} ->
-            acc ++ [filter_result]
+            {:cont, {:ok, acc ++ [filter_result]}}
+
+          {:skip, reason} when mode == :strict ->
+            {:halt, {:error, %{reason: reason, filter: filter_item}}}
 
           {:skip, _reason} ->
-            # Filter was intentionally skipped (e.g., column not found, invalid value)
-            acc
+            {:cont, {:ok, acc}}
+
+          {:error, error} when mode == :strict ->
+            {:halt, {:error, error}}
 
           {:error, error} ->
-            # Log error but continue processing other filters
             require Logger
 
             Logger.warning(
               "Filter processing error: #{inspect(error)}, filter: #{inspect(filter_item)}"
             )
 
-            acc
+            {:cont, {:ok, acc}}
         end
       end)
 
-    # Handle POLYMORPHIC filters separately
-    result = result ++ handle_polymorphic_filters(section_filters)
-    result
+    case result do
+      {:ok, built} -> {:ok, built ++ handle_polymorphic_filters(section_filters)}
+      {:error, _error} = error -> error
+    end
   end
 
   # Process a single filter with error handling
-  defp process_single_filter(selecto, filters, %{
-         "is_section" => "Y",
-         "uuid" => uuid,
-         "conjunction" => conj
-       }) do
+  defp process_single_filter(
+         selecto,
+         filters,
+         %{
+           "is_section" => "Y",
+           "uuid" => uuid,
+           "conjunction" => conj
+         },
+         mode
+       ) do
     conjunction_atom =
       case conj do
         "AND" -> :and
@@ -802,11 +826,13 @@ defmodule SelectoComponents.Helpers.Filters do
         _ -> :and
       end
 
-    nested_filters = filter_recurse(selecto, filters, uuid)
-    {:ok, [{conjunction_atom, nested_filters}]}
+    case do_filter_recurse(selecto, filters, uuid, mode) do
+      {:ok, nested_filters} -> {:ok, [{conjunction_atom, nested_filters}]}
+      {:error, _error} = error -> error
+    end
   end
 
-  defp process_single_filter(selecto, _filters, f) when is_map(f) do
+  defp process_single_filter(selecto, _filters, f, _mode) when is_map(f) do
     f = normalize_multiselect_filter(f)
 
     try do
@@ -832,7 +858,7 @@ defmodule SelectoComponents.Helpers.Filters do
     end
   end
 
-  defp process_single_filter(_selecto, _filters, filter_item) do
+  defp process_single_filter(_selecto, _filters, filter_item, _mode) do
     {:skip, {:invalid_format, filter_item}}
   end
 

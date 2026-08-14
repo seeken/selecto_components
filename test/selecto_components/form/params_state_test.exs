@@ -2105,11 +2105,18 @@ defmodule SelectoComponents.Form.ParamsStateTest do
     updated = ParamsState.view_from_params(%{"view_mode" => "missing_view"}, base_socket())
 
     assert updated.assigns.executed == false
-    assert updated.assigns.execution_error.stage in [:result_process, :db_execute]
-    assert updated.assigns.execution_error.category in [:processing, :query, :connection]
+    assert updated.assigns.execution_error.stage in [:input, :result_process, :db_execute]
+
+    assert updated.assigns.execution_error.category in [
+             :validation,
+             :processing,
+             :query,
+             :connection
+           ]
 
     assert updated.assigns.execution_error.code in [
              :view_processing_failed,
+             :validation_error,
              :db_query_failed,
              :connection_error
            ]

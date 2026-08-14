@@ -48,6 +48,13 @@ defmodule SelectoComponents.Execution.Executor do
     end
   end
 
+  defp validate_plan(%{validation_errors: [_ | _] = errors}) do
+    {:error,
+     Selecto.Error.validation_error("Query intent is not allowed by the server contract", %{
+       errors: errors
+     })}
+  end
+
   defp validate_plan(%{selected_view: :aggregate, view_set: view_set}) do
     if list_field(view_set, :groups) == [] and list_field(view_set, :aggregates) == [] do
       {:error,

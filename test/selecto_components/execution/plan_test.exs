@@ -2,7 +2,9 @@ defmodule SelectoComponents.Execution.PlanTest do
   use ExUnit.Case, async: true
 
   alias Phoenix.Component
+  alias SelectoComponents.Execution.Executor
   alias SelectoComponents.Execution.Plan
+  alias SelectoComponents.QueryContract
 
   test "build returns execution-ready plan with runtime presentation context" do
     socket =
@@ -43,6 +45,46 @@ defmodule SelectoComponents.Execution.PlanTest do
     assert elem(plan.view_tuple, 0) == :detail
   end
 
+  test "server query contract rejects a filter hidden by the UI policy" do
+    socket = base_socket()
+
+    assert {:ok, contract, _diagnostics} = QueryContract.json_document(socket.assigns.selecto)
+
+    contract =
+      update_in(contract["fields"], fn fields ->
+        Enum.map(fields, fn
+          %{"id" => "language"} = field ->
+            field
+            |> Map.put("filterable", false)
+            |> Map.put("comparators", [])
+
+          field ->
+            field
+        end)
+      end)
+
+    socket = Component.assign(socket, :query_contract, contract)
+    plan = Plan.build(filter_params("language", "=", "English"), socket)
+
+    assert Enum.any?(plan.validation_errors, &(&1.code == :field_not_filterable))
+
+    result = Executor.run(plan, socket)
+    refute result.executed
+    assert result.execution_error
+  end
+
+  test "a filter build error blocks execution instead of widening the query" do
+    socket = base_socket()
+    plan = Plan.build(filter_params("missing_field", "=", "restricted"), socket)
+
+    assert Enum.any?(plan.validation_errors, &(&1.code == :invalid_field))
+    assert Enum.any?(plan.validation_errors, &(&1.code == :filter_build_failed))
+
+    result = Executor.run(plan, socket)
+    refute result.executed
+    assert result.execution_error
+  end
+
   defp base_socket do
     %Phoenix.LiveView.Socket{
       assigns: %{
@@ -80,5 +122,22 @@ defmodule SelectoComponents.Execution.PlanTest do
     }
 
     Selecto.configure(domain, nil)
+  end
+
+  defp filter_params(field, comparator, value) do
+    %{
+      "view_mode" => "detail",
+      "selected" => %{},
+      "filters" => %{
+        "k0" => %{
+          "uuid" => "f0",
+          "section" => "filters",
+          "filter" => field,
+          "comp" => comparator,
+          "value" => value,
+          "index" => "0"
+        }
+      }
+    }
   end
 end
