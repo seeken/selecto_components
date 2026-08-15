@@ -38,6 +38,26 @@ defmodule SelectoComponents.Execution.PlanTest do
     assert Map.get(plan.selecto.set, :order_by, []) == [{:desc, "id"}]
   end
 
+  test "build keeps the configured source for joined selections" do
+    socket =
+      base_socket()
+      |> Component.assign(:selecto, joined_selecto())
+
+    plan =
+      Plan.build(
+        %{
+          "view_mode" => "detail",
+          "selected" => %{
+            "k0" => %{"field" => "customer.name", "index" => "0", "uuid" => "d1"}
+          }
+        },
+        socket
+      )
+
+    refute Selecto.Retarget.has_retarget?(plan.selecto)
+    assert {:field, "customer.name", "customer.name"} in Map.get(plan.selecto.set, :selected, [])
+  end
+
   test "build normalizes unknown view mode to safe default" do
     plan = Plan.build(%{"view_mode" => "missing_view"}, base_socket())
 
@@ -119,6 +139,46 @@ defmodule SelectoComponents.Execution.PlanTest do
       },
       schemas: %{},
       joins: %{}
+    }
+
+    Selecto.configure(domain, nil)
+  end
+
+  defp joined_selecto do
+    domain = %{
+      name: "ExecutionPlanJoinedTest",
+      source: %{
+        source_table: "orders",
+        primary_key: :id,
+        fields: [:id, :customer_id],
+        redact_fields: [],
+        columns: %{
+          id: %{type: :integer, name: "ID", colid: :id},
+          customer_id: %{type: :integer, name: "Customer ID", colid: :customer_id}
+        },
+        associations: %{
+          customer: %{
+            queryable: :customers,
+            field: :customer,
+            owner_key: :customer_id,
+            related_key: :id
+          }
+        }
+      },
+      schemas: %{
+        customers: %{
+          source_table: "customers",
+          primary_key: :id,
+          fields: [:id, :name],
+          redact_fields: [],
+          columns: %{
+            id: %{type: :integer, name: "ID", colid: :id},
+            name: %{type: :string, name: "Name", colid: :name}
+          },
+          associations: %{}
+        }
+      },
+      joins: %{customer: %{type: :left}}
     }
 
     Selecto.configure(domain, nil)

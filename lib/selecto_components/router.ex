@@ -188,18 +188,18 @@ defmodule SelectoComponents.Router do
       filters = Map.get(view_config, :filters, [])
       filtered_selecto = apply_filters(selecto, filters)
 
-      # Apply automatic retarget if needed
-      retargeted_selecto = maybe_auto_retarget(filtered_selecto, view_config)
+      # Apply the view's selected columns without changing the query source.
+      configured_selecto = apply_selected_columns(filtered_selecto, view_config)
 
       # Check if we have a valid connection - if not, skip execution
       # This allows tests to verify retarget logic without needing a database
-      if retargeted_selecto.connection == nil do
+      if configured_selecto.connection == nil do
         Logger.debug("Skipping query execution - no database connection (test mode)")
-        {:ok, %{rows: [], columns: [], aliases: %{}}, retargeted_selecto}
+        {:ok, %{rows: [], columns: [], aliases: %{}}, configured_selecto}
       else
         # Log the SQL being generated for debugging
         try do
-          sql_info = Selecto.to_sql(retargeted_selecto)
+          sql_info = Selecto.to_sql(configured_selecto)
           Logger.debug("Executing SQL: #{inspect(sql_info, pretty: true)}")
         rescue
           e ->
@@ -208,9 +208,9 @@ defmodule SelectoComponents.Router do
         end
 
         # Execute the query
-        case Selecto.execute(retargeted_selecto) do
+        case Selecto.execute(configured_selecto) do
           {:ok, results} ->
-            {:ok, results, retargeted_selecto}
+            {:ok, results, configured_selecto}
 
           {:error, %{message: message} = error} ->
             Logger.error("Query execution failed with error: #{message}")
@@ -467,51 +467,13 @@ defmodule SelectoComponents.Router do
     end
   end
 
-  defp maybe_auto_retarget(selecto, view_config) do
-    # Check if automatic retarget is needed
+  defp apply_selected_columns(selecto, view_config) do
     selected_columns = get_selected_columns(view_config)
 
-    # Clean column names (remove qualified prefixes like "film.title" -> "title")
-    clean_columns =
-      Enum.map(selected_columns, fn col ->
-        col_str = to_string(col)
-
-        if String.contains?(col_str, ".") do
-          [_, column_name] = String.split(col_str, ".", parts: 2)
-          column_name
-        else
-          col_str
-        end
-      end)
-
-    if should_auto_retarget?(selecto, selected_columns) do
-      target_table = find_retarget_target(selecto, selected_columns)
-
-      if target_table do
-        # Apply retarget to the target table
-        retargeted = Selecto.Retarget.retarget(selecto, target_table)
-
-        # Apply selected columns after retarget
-        if length(clean_columns) > 0 do
-          Selecto.select(retargeted, clean_columns)
-        else
-          retargeted
-        end
-      else
-        # No valid retarget target found, apply select to original selecto
-        if length(clean_columns) > 0 do
-          Selecto.select(selecto, clean_columns)
-        else
-          selecto
-        end
-      end
+    if selected_columns == [] do
+      selecto
     else
-      # No retarget needed, but still apply select if we have columns
-      if length(clean_columns) > 0 do
-        Selecto.select(selecto, clean_columns)
-      else
-        selecto
-      end
+      Selecto.select(selecto, selected_columns)
     end
   end
 
@@ -562,121 +524,5 @@ defmodule SelectoComponents.Router do
       _ ->
         []
     end
-  end
-
-  defp should_auto_retarget?(selecto, selected_columns) do
-    # Check if any selected columns are missing from the base table
-    # or are qualified column names (e.g., "film.description")
-    source_columns = get_source_columns(selecto)
-
-    result =
-      Enum.any?(selected_columns, fn col ->
-        col_str = to_string(col)
-
-        # Check if it's a qualified column name (contains a dot)
-        if String.contains?(col_str, ".") do
-          # Qualified columns like "film.description" should trigger retarget
-          parts = String.split(col_str, ".", parts: 2)
-
-          [table_name, _column_name] = parts
-          # Retarget should be triggered for qualified names from joined tables
-          should_retarget = table_name != "selecto_root" && table_name != ""
-          should_retarget
-        else
-          # For simple column names, check if they exist in source
-          exists = column_exists_in_source?(col, source_columns)
-          not exists
-        end
-      end)
-
-    result
-  end
-
-  defp get_source_columns(selecto) do
-    # Get columns from the source table
-    source_config = selecto.domain.source
-    Map.keys(source_config.columns || %{})
-  end
-
-  defp column_exists_in_source?(column_name, source_columns) do
-    # Check if column exists in source (handle string/atom conversion)
-    # Use SafeAtom.to_existing to prevent atom table exhaustion from user input
-    col_atom = if is_binary(column_name), do: SafeAtom.to_existing(column_name), else: column_name
-    col_string = if is_atom(column_name), do: Atom.to_string(column_name), else: column_name
-
-    Enum.any?(source_columns, fn source_col ->
-      source_col == col_atom or source_col == col_string or
-        Atom.to_string(source_col) == col_string
-    end)
-  end
-
-  defp find_retarget_target(selecto, selected_columns) do
-    # Find the first joined table that has all the selected columns
-    # Handle both simple and qualified column names
-
-    # Extract table names from qualified columns
-    table_targets =
-      selected_columns
-      |> Enum.map(fn col ->
-        col_str = to_string(col)
-
-        if String.contains?(col_str, ".") do
-          [table_name, _] = String.split(col_str, ".", parts: 2)
-          # Use SafeAtom.to_existing to prevent atom table exhaustion
-          SafeAtom.to_existing(table_name)
-        else
-          nil
-        end
-      end)
-      |> Enum.filter(&(&1 != nil))
-      |> Enum.uniq()
-
-    # If we have explicit table references, use the first one
-    if length(table_targets) > 0 do
-      # Return the first table that was explicitly referenced
-      target = hd(table_targets)
-      target
-    else
-      # Fall back to original logic for simple column names
-      schemas = Map.get(selecto.domain, :schemas, %{})
-
-      result =
-        Enum.find_value(schemas, fn {schema_name, schema_config} ->
-          schema_columns = Map.keys(schema_config.columns || %{})
-
-          if has_all_columns?(selected_columns, schema_columns) do
-            schema_name
-          else
-            nil
-          end
-        end)
-
-      result
-    end
-  end
-
-  defp has_all_columns?(selected_columns, schema_columns) do
-    # Check if schema has all selected columns
-    # Handle both simple and qualified column names
-    Enum.all?(selected_columns, fn col ->
-      col_str = to_string(col)
-
-      # If it's a qualified column name, extract just the column part
-      col_name =
-        if String.contains?(col_str, ".") do
-          [_, column_name] = String.split(col_str, ".", parts: 2)
-          column_name
-        else
-          col_str
-        end
-
-      # Use SafeAtom.to_existing to prevent atom table exhaustion from user input
-      col_atom = if is_binary(col_name), do: SafeAtom.to_existing(col_name), else: col_name
-
-      Enum.any?(schema_columns, fn schema_col ->
-        schema_col == col_atom or
-          Atom.to_string(schema_col) == col_name
-      end)
-    end)
   end
 end

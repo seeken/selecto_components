@@ -1933,8 +1933,7 @@ defmodule SelectoComponents.Form do
   #   |> Map.new()
   # end
 
-  # Helper to extract selected columns from params for retarget detection
-  # This function is used both internally and by Selecto.AutoRetarget
+  # Helper to extract selected columns from params.
 
   def get_selected_columns_from_params(params) do
     view_mode = Map.get(params, "view_mode", "")

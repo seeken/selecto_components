@@ -8,7 +8,6 @@ defmodule SelectoComponents.Execution.Plan do
 
   import SelectoComponents.Helpers.Filters, only: [filter_recurse_strict: 3]
 
-  alias SelectoComponents.Form
   alias SelectoComponents.Form.ColumnCatalog
   alias SelectoComponents.Execution.CTEs
   alias SelectoComponents.Form.ParamsState
@@ -80,7 +79,6 @@ defmodule SelectoComponents.Execution.Plan do
     selecto =
       selecto
       |> Map.put(:set, Map.merge(Map.get(selecto, :set, %{}), view_set))
-      |> maybe_apply_retarget(params)
       |> maybe_apply_denorm_groups()
       |> maybe_apply_sort(socket.assigns[:sort_by])
 
@@ -180,13 +178,6 @@ defmodule SelectoComponents.Execution.Plan do
   end
 
   defp maybe_put_detail_page(params, _selected_view, _socket), do: params
-
-  defp maybe_apply_retarget(selecto, params) do
-    Selecto.AutoRetarget.maybe_apply(selecto,
-      view_mode: Map.get(params, "view_mode", "detail"),
-      selected: Form.get_selected_columns_from_params(params)
-    )
-  end
 
   defp maybe_apply_denorm_groups(selecto) do
     if Map.has_key?(selecto.set, :denorm_groups) and is_map(selecto.set.denorm_groups) and

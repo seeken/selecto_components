@@ -5,6 +5,8 @@ CHANGES
 V 0.5.0 - Adapter-Neutral Runtime Boundary
 -------------------------------------------
 
+- Removed automatic query-source retargeting. Joined selections now retain
+  their qualifiers, and applications can opt in through `Selecto.retarget/3`.
 - Removed Postgrex fallbacks, PostgreSQL SQLSTATE/type handling, `$N`
   placeholder assumptions, and the `postgrex_opts` execution field.
 - Routed reads through explicit Selecto runtime providers and normalized
