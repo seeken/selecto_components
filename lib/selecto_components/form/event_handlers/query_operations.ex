@@ -52,6 +52,39 @@ defmodule SelectoComponents.Form.EventHandlers.QueryOperations do
       """
       @impl true
       def handle_params(%{"saved_view" => name} = params, _uri, socket) do
+        if ParamsState.query_params_enabled?(socket) do
+          handle_saved_view_params(name, params, socket)
+        else
+          {:noreply, private_query_param_socket(params, socket)}
+        end
+      end
+
+      def handle_params(%{"view_mode" => _m} = params, _uri, socket) do
+        if ParamsState.query_params_enabled?(socket) do
+          handle_view_params(params, socket)
+        else
+          {:noreply, private_query_param_socket(params, socket)}
+        end
+      end
+
+      ### accept default config
+      def handle_params(params, _uri, socket) do
+        if ParamsState.query_params_enabled?(socket) do
+          Logger.debug(fn ->
+            "[selecto_components] handle_params default connected=#{connected?(socket)} params_keys=#{inspect(Map.keys(params))} pid=#{inspect(self())}"
+          end)
+
+          {:noreply,
+           socket
+           |> assign(:params, params)
+           |> assign(:selected_saved_view, nil)
+           |> assign(:validation_locked_until_patch, false)}
+        else
+          {:noreply, private_query_param_socket(params, socket)}
+        end
+      end
+
+      defp handle_saved_view_params(name, params, socket) do
         Logger.debug(fn ->
           "[selecto_components] handle_params saved_view=#{name} connected=#{connected?(socket)} pid=#{inspect(self())}"
         end)
@@ -103,7 +136,7 @@ defmodule SelectoComponents.Form.EventHandlers.QueryOperations do
         end)
       end
 
-      def handle_params(%{"view_mode" => _m} = params, _uri, socket) do
+      defp handle_view_params(params, socket) do
         Logger.debug(fn ->
           "[selecto_components] handle_params view_mode=#{Map.get(params, "view_mode")} connected=#{connected?(socket)} pid=#{inspect(self())}"
         end)
@@ -120,17 +153,18 @@ defmodule SelectoComponents.Form.EventHandlers.QueryOperations do
         {:noreply, ParamsState.view_from_params(params, socket)}
       end
 
-      ### accept default config
-      def handle_params(params, _uri, socket) do
-        Logger.debug(fn ->
-          "[selecto_components] handle_params default connected=#{connected?(socket)} params_keys=#{inspect(Map.keys(params))} pid=#{inspect(self())}"
-        end)
+      defp private_query_param_socket(params, socket) do
+        socket =
+          socket
+          |> assign(:params, %{})
+          |> assign(:selected_saved_view, nil)
+          |> assign(:validation_locked_until_patch, false)
 
-        {:noreply,
-         socket
-         |> assign(:params, params)
-         |> assign(:selected_saved_view, nil)
-         |> assign(:validation_locked_until_patch, false)}
+        if is_map(params) and map_size(params) > 0 do
+          ParamsState.state_to_url(%{}, socket, replace: true)
+        else
+          socket
+        end
       end
 
       # Normalizes query results from list format to map format.

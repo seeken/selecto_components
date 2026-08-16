@@ -1758,6 +1758,9 @@ defmodule SelectoComponents.Form.ParamsState do
     URL.state_to_url(params, socket, opts)
   end
 
+  @doc "Returns whether the current domain permits explorer state in query parameters."
+  def query_params_enabled?(socket), do: URL.query_params_enabled?(socket)
+
   defp put_view_config(views, key, view_config) when is_map(views) do
     if Map.has_key?(views, key) do
       Map.put(views, key, view_config)

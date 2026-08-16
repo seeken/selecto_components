@@ -161,6 +161,27 @@ The host app owns actual delivery and scheduling. `selecto_components` stays sch
 
 ### Security-sensitive runtime options
 
+Domains whose filters may contain sensitive values can disable browser query
+state:
+
+```elixir
+domain = %{
+  name: "Patients",
+  components: %{query_params: false},
+  source: %{...},
+  schemas: %{},
+  joins: %{}
+}
+```
+
+With this policy, apply, pagination, sorting, drill-down, and saved-view
+transitions patch only the LiveView path. Inbound query state is ignored and
+removed from the address bar. State remains in the LiveView process and form
+events; a reload returns to domain defaults unless the host restores an
+explicit saved view. This reduces disclosure through history, logs, referrers,
+and copied links, but hosts must still use TLS and avoid logging sensitive event
+payloads.
+
 Map tile and image-overlay URLs are limited to HTTPS, same-origin paths, and an
 explicit host allowlist. OpenStreetMap's default tile host is allowed by default;
 add application-specific hosts in runtime configuration:

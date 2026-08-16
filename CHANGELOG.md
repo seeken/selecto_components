@@ -5,6 +5,10 @@ CHANGES
 V 0.5.0 - Adapter-Neutral Runtime Boundary
 -------------------------------------------
 
+- Added domain-selected `components.query_params: false` private state mode;
+  query applies, pagination, drill-downs, and saved-view transitions remain in
+  LiveView state while generated URLs stay path-only and inbound URL state is
+  ignored.
 - Removed automatic query-source retargeting. Joined selections now retain
   their qualifiers, and applications can opt in through `Selecto.retarget/3`.
 - Removed Postgrex fallbacks, PostgreSQL SQLSTATE/type handling, `$N`

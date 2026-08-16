@@ -37,11 +37,53 @@ defmodule SelectoComponents.Session.URL do
   end
 
   def state_to_url(params, socket, opts \\ []) do
-    params = params |> compact_url_params() |> merge_passthrough_url_params(socket)
-    params_encoded = Plug.Conn.Query.encode(params)
-    full_path = "#{socket.assigns.my_path}?#{params_encoded}"
-    Phoenix.LiveView.push_patch(socket, Keyword.merge([to: full_path], opts))
+    if query_params_enabled?(socket) do
+      params = params |> compact_url_params() |> merge_passthrough_url_params(socket)
+      params_encoded = Plug.Conn.Query.encode(params)
+      full_path = "#{socket.assigns.my_path}?#{params_encoded}"
+      Phoenix.LiveView.push_patch(socket, Keyword.merge([to: full_path], opts))
+    else
+      Phoenix.LiveView.push_patch(
+        socket,
+        Keyword.merge([to: query_param_free_path(socket)], opts)
+      )
+    end
   end
+
+  @doc """
+  Returns whether the current domain permits editable explorer state in URLs.
+
+  Domains opt out with `components: %{query_params: false}`. Missing policy
+  defaults to the shareable query-parameter behavior. An authored but malformed
+  value fails closed and also disables query parameters.
+  """
+  @spec query_params_enabled?(Phoenix.LiveView.Socket.t() | map()) :: boolean()
+  def query_params_enabled?(%Phoenix.LiveView.Socket{assigns: assigns}),
+    do: query_params_enabled?(assigns)
+
+  def query_params_enabled?(assigns) when is_map(assigns) do
+    domain =
+      assigns
+      |> get_map_value(:selecto, %{})
+      |> get_map_value(:domain, %{})
+
+    case fetch_map_value(domain, :components) do
+      :error ->
+        true
+
+      {:ok, components} when is_map(components) ->
+        case fetch_map_value(components, :query_params) do
+          :error -> true
+          {:ok, true} -> true
+          {:ok, _disabled_or_invalid} -> false
+        end
+
+      {:ok, _invalid_components_policy} ->
+        false
+    end
+  end
+
+  def query_params_enabled?(_), do: true
 
   def compact_url_params(params) when is_map(params) do
     Enum.reduce(url_compactable_keys(), params, fn key, acc ->
@@ -283,6 +325,28 @@ defmodule SelectoComponents.Session.URL do
 
     Map.merge(passthrough_params, params)
   end
+
+  defp query_param_free_path(socket) do
+    socket.assigns
+    |> get_map_value(:my_path, get_map_value(socket.assigns, :path, "/"))
+    |> to_string()
+    |> String.split("?", parts: 2)
+    |> hd()
+    |> case do
+      "" -> "/"
+      path -> path
+    end
+  end
+
+  defp fetch_map_value(map, key) when is_map(map) do
+    cond do
+      Map.has_key?(map, key) -> {:ok, Map.get(map, key)}
+      Map.has_key?(map, to_string(key)) -> {:ok, Map.get(map, to_string(key))}
+      true -> :error
+    end
+  end
+
+  defp fetch_map_value(_map, _key), do: :error
 
   defp normalize_passthrough_keys(keys) when is_list(keys), do: Enum.map(keys, &to_string/1)
   defp normalize_passthrough_keys(_keys), do: []

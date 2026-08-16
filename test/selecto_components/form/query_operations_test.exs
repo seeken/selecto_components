@@ -90,6 +90,52 @@ defmodule SelectoComponents.Form.QueryOperationsTest do
     assert to =~ "aggregate"
   end
 
+  test "domain-private mode ignores inbound query state and replaces it with a path-only URL" do
+    socket =
+      base_socket(%{
+        selecto: private_selecto(),
+        params: %{},
+        view_config: %{view_mode: "detail", filters: [], views: %{}}
+      })
+
+    sensitive_params = %{
+      "view_mode" => "aggregate",
+      "filters" => %{
+        "k0" => %{
+          "uuid" => "secret-filter",
+          "section" => "filters",
+          "filter" => "language",
+          "comp" => "=",
+          "value" => "patient-123"
+        }
+      }
+    }
+
+    assert {:noreply, updated_socket} =
+             TestLive.handle_params(sensitive_params, nil, socket)
+
+    assert updated_socket.assigns.params == %{}
+    assert updated_socket.assigns.view_config.view_mode == "detail"
+
+    assert {:live, :patch, %{to: "/pagila_films", kind: :replace}} =
+             updated_socket.redirected
+
+    refute inspect(updated_socket.redirected) =~ "patient-123"
+  end
+
+  test "domain-private mode keeps generated state patches query-parameter free" do
+    socket = base_socket(%{selecto: private_selecto()})
+
+    updated_socket =
+      SelectoComponents.Form.ParamsState.state_to_url(
+        %{"filters" => %{"k0" => %{"value" => "patient-123"}}},
+        socket
+      )
+
+    assert {:live, :patch, %{to: "/pagila_films"}} = updated_socket.redirected
+    refute inspect(updated_socket.redirected) =~ "patient-123"
+  end
+
   defp base_socket(overrides) do
     assigns =
       Map.merge(
@@ -119,7 +165,17 @@ defmodule SelectoComponents.Form.QueryOperationsTest do
   end
 
   defp selecto do
-    domain = %{
+    Selecto.configure(domain(), nil)
+  end
+
+  defp private_selecto do
+    domain()
+    |> Map.put(:components, %{query_params: false})
+    |> Selecto.configure(nil)
+  end
+
+  defp domain do
+    %{
       name: "QueryOperationsTest",
       source: %{
         source_table: "films",
@@ -135,7 +191,5 @@ defmodule SelectoComponents.Form.QueryOperationsTest do
       schemas: %{},
       joins: %{}
     }
-
-    Selecto.configure(domain, nil)
   end
 end
