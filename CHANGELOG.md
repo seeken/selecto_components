@@ -2,6 +2,16 @@
 CHANGES
 =======
 
+Unreleased - Query Library Integration
+--------------------------------------
+
+- Added a domain-driven Query Library form tab for named views, additional
+  segments, metadata, and typed segment parameters.
+- Materialized named projections and orderings into editable Detail state while
+  retaining named segments as governed constraints alongside visual filters.
+- Preserved query-library selections through LiveView state, URL parameters,
+  and saved-view serialization.
+
 V 0.5.0 - Adapter-Neutral Runtime Boundary
 -------------------------------------------
 

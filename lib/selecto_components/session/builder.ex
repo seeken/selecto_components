@@ -24,6 +24,7 @@ defmodule SelectoComponents.Session.Builder do
       views: view_configs,
       filters: [],
       ctes: [],
+      query_library: %{view: nil, segments: [], parameters: %{}},
       active_tab: "view",
       revision: 0,
       applied_revision: 0,

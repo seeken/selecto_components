@@ -8,6 +8,7 @@ defmodule SelectoComponents.Session.Codec do
 
   alias SelectoComponents.Execution.CTEs
   alias SelectoComponents.Form.ParamsState
+  alias SelectoComponents.QueryLibrary
   alias SelectoComponents.Views.Runtime, as: ViewRuntime
 
   @spec filter_params_to_view_config(map(), Phoenix.LiveView.Socket.t()) :: map()
@@ -47,12 +48,16 @@ defmodule SelectoComponents.Session.Codec do
       end)
       |> preserve_missing_detail_view_params(existing_config, params)
 
+    submitted_library = submitted_query_library(params, existing_config)
+
     provisional_config =
       Map.merge(existing_config, %{
         filters: filters,
         views: view_configs,
-        view_mode: Map.get(params, "view_mode", existing_config[:view_mode] || "aggregate")
+        view_mode: Map.get(params, "view_mode", existing_config[:view_mode] || "aggregate"),
+        query_library: submitted_library
       })
+      |> QueryLibrary.apply_preset_if_changed(socket.assigns[:selecto], existing_config)
 
     CTEs.sync_view_config(provisional_config, socket.assigns[:selecto])
   end
@@ -80,12 +85,16 @@ defmodule SelectoComponents.Session.Codec do
       end)
       |> preserve_missing_detail_view_params(existing_config, params)
 
+    submitted_library = submitted_query_library(params, existing_config)
+
     provisional_config =
       Map.merge(existing_config, %{
         filters: filters,
         views: view_configs,
-        view_mode: Map.get(params, "view_mode", existing_config[:view_mode] || "aggregate")
+        view_mode: Map.get(params, "view_mode", existing_config[:view_mode] || "aggregate"),
+        query_library: submitted_library
       })
+      |> QueryLibrary.apply_preset_if_changed(socket.assigns[:selecto], existing_config)
 
     CTEs.sync_view_config(provisional_config, socket.assigns[:selecto])
   end
@@ -96,7 +105,11 @@ defmodule SelectoComponents.Session.Codec do
       "view_mode" => get_map_value(view_config, :view_mode, "aggregate"),
       "ctes" => normalize_saved_ctes_for_storage(get_map_value(view_config, :ctes, [])),
       "filters" => normalize_saved_filters_for_storage(get_map_value(view_config, :filters, [])),
-      "views" => normalize_saved_views_for_storage(get_map_value(view_config, :views, %{}))
+      "views" => normalize_saved_views_for_storage(get_map_value(view_config, :views, %{})),
+      "query_library" =>
+        view_config
+        |> QueryLibrary.selection()
+        |> normalize_saved_term()
     }
   end
 
@@ -115,11 +128,16 @@ defmodule SelectoComponents.Session.Codec do
             get_map_value(existing_config, :view_mode, "aggregate")
           ),
         filters: normalize_saved_filters_from_storage(get_map_value(saved_params, :filters, [])),
-        views: restore_saved_views(saved_params, existing_config, socket)
+        views: restore_saved_views(saved_params, existing_config, socket),
+        query_library:
+          saved_params
+          |> get_map_value(:query_library, get_map_value(existing_config, :query_library, %{}))
+          |> QueryLibrary.normalize_selection()
       }
 
       existing_config
       |> Map.merge(restored_config)
+      |> QueryLibrary.apply_preset(socket.assigns[:selecto])
       |> CTEs.sync_view_config(socket.assigns[:selecto])
     else
       params_to_view_config(saved_params, socket)
@@ -194,6 +212,18 @@ defmodule SelectoComponents.Session.Codec do
       end
     else
       existing_filters
+    end
+  end
+
+  defp submitted_query_library(params, existing_config) do
+    if Map.has_key?(params, "query_library") or Map.has_key?(params, :query_library) do
+      params
+      |> get_map_value(:query_library, %{})
+      |> QueryLibrary.normalize_selection()
+    else
+      existing_config
+      |> get_map_value(:query_library, %{})
+      |> QueryLibrary.normalize_selection()
     end
   end
 

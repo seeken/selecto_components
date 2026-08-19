@@ -59,7 +59,8 @@ defmodule SelectoComponents.SessionTest do
              view_mode: "detail",
              views: %{detail: %{selected: []}},
              filters: [],
-             ctes: []
+             ctes: [],
+             query_library: %{view: nil, segments: [], parameters: %{}}
            }
 
     assert Keyword.fetch!(assigns, :active_tab) == "view"

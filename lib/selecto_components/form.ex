@@ -12,6 +12,7 @@ defmodule SelectoComponents.Form do
   alias SelectoComponents.Form.Header
   alias SelectoComponents.Form.ModalRouter
   alias SelectoComponents.Form.PromotedFilterEditor
+  alias SelectoComponents.Form.QueryLibraryPanel
   alias SelectoComponents.Form.SavePanel
   alias SelectoComponents.Form.SubmitFooter
   alias SelectoComponents.Form.TabPanel
@@ -19,6 +20,7 @@ defmodule SelectoComponents.Form do
   alias SelectoComponents.Form.ViewPanel
   alias SelectoComponents.Keyboard.ShortcutHelp
   alias SelectoComponents.Keyboard.Shortcuts
+  alias SelectoComponents.QueryLibrary
 
   @doc """
   Form for configuing Selecto View
@@ -38,6 +40,7 @@ defmodule SelectoComponents.Form do
       ColumnCatalog.choice_source_metadata_by_field(assigns.selecto, choice_source_metadata_opts)
 
     use_saved_views = Map.get(assigns, :saved_view_module, false)
+    use_query_library = QueryLibrary.available?(assigns.selecto)
     keyboard_shortcuts = Shortcuts.normalize(Map.get(assigns, :keyboard_shortcuts, true))
     shortcut_context = [views: assigns.views, use_saved_views: use_saved_views]
 
@@ -77,6 +80,7 @@ defmodule SelectoComponents.Form do
           ),
         theme: Theme.resolve_theme(assigns),
         use_saved_views: use_saved_views,
+        use_query_library: use_query_library,
         use_exported_views: Map.get(assigns, :exported_view_module, false),
         use_export_delivery: Map.get(assigns, :export_delivery_module, false),
         use_scheduled_exports: Map.get(assigns, :scheduled_export_module, false),
@@ -217,7 +221,12 @@ defmodule SelectoComponents.Form do
           aria-hidden={to_string(!@show_view_configurator)}
           class={if @show_view_configurator, do: "", else: "hidden"}
         >
-          <Tabs.nav active_tab={@active_tab} theme={@theme} use_saved_views={@use_saved_views} />
+          <Tabs.nav
+            active_tab={@active_tab}
+            theme={@theme}
+            use_saved_views={@use_saved_views}
+            use_query_library={@use_query_library}
+          />
 
           <ViewPanel.panel
             active_tab={@active_tab}
@@ -248,6 +257,20 @@ defmodule SelectoComponents.Form do
               {FilterRendering.render_filter_form(assigns, uuid, index, section, filter_value)}
             </:filter_form>
           </FilterPanel.panel>
+
+          <TabPanel.panel
+            :if={@use_query_library}
+            active_tab={@active_tab}
+            tab="library"
+            theme={@theme}
+            title="Query Library"
+          >
+            <QueryLibraryPanel.panel
+              selecto={@selecto}
+              view_config={@view_config}
+              theme={@theme}
+            />
+          </TabPanel.panel>
 
           <TabPanel.panel :if={@use_saved_views} active_tab={@active_tab} tab="save" theme={@theme} title="Save View Configuration">
             <SavePanel.panel theme={@theme} />

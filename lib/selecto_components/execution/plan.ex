@@ -13,6 +13,7 @@ defmodule SelectoComponents.Execution.Plan do
   alias SelectoComponents.Form.ParamsState
   alias SelectoComponents.Presentation
   alias SelectoComponents.QueryContract
+  alias SelectoComponents.QueryLibrary
   alias SelectoComponents.SafeAtom
   alias SelectoComponents.SubselectBuilder
   alias SelectoComponents.EnhancedTable.Sorting
@@ -50,6 +51,7 @@ defmodule SelectoComponents.Execution.Plan do
       socket.assigns.selecto
       |> rebuild_selecto()
       |> CTEs.apply_for_params(params)
+      |> QueryLibrary.apply_segments(get_map_value(params, :query_library, %{}))
 
     raw_columns = Selecto.columns(selecto)
     columns_list = ColumnCatalog.picker_columns(selecto)
@@ -75,6 +77,8 @@ defmodule SelectoComponents.Execution.Plan do
         nil ->
           raise "View mode '#{selected_view}' not found in configured views"
       end
+
+    view_set = merge_library_filters(view_set, Map.get(selecto.set, :filtered, []))
 
     selecto =
       selecto
@@ -200,6 +204,13 @@ defmodule SelectoComponents.Execution.Plan do
 
   defp maybe_apply_sort(selecto, nil), do: selecto
   defp maybe_apply_sort(selecto, sort_by), do: Sorting.apply_sort_to_query(selecto, sort_by)
+
+  defp merge_library_filters(view_set, []), do: view_set
+
+  defp merge_library_filters(view_set, library_filters) do
+    interactive_filters = Map.get(view_set, :filtered, [])
+    Map.put(view_set, :filtered, Enum.uniq(library_filters ++ interactive_filters))
+  end
 
   defp get_map_value(map, key, default \\ nil)
 

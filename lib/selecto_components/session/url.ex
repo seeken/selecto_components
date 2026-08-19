@@ -6,6 +6,7 @@ defmodule SelectoComponents.Session.URL do
   alias SelectoComponents.SafeAtom
   alias SelectoComponents.Views.Aggregate.Options, as: AggregateOptions
   alias SelectoComponents.Views.Detail.Options, as: DetailOptions
+  alias SelectoComponents.QueryLibrary
 
   @map_param_keys ~w(
     geometry_field popup_field color_field tile_url attribution background_mode
@@ -23,7 +24,11 @@ defmodule SelectoComponents.Session.URL do
     params = %{
       "view_mode" => view_mode,
       "ctes" => ctes_to_params(ctes),
-      "filters" => filters_to_params(filters)
+      "filters" => filters_to_params(filters),
+      "query_library" =>
+        view_config
+        |> QueryLibrary.selection()
+        |> query_library_to_params()
     }
 
     view_params =
@@ -216,6 +221,14 @@ defmodule SelectoComponents.Session.URL do
           build_filter_params(uuid, section, filter_data, index)
         )
     end)
+  end
+
+  defp query_library_to_params(selection) do
+    %{
+      "view" => selection.view || "",
+      "segments" => selection.segments,
+      "parameters" => selection.parameters
+    }
   end
 
   defp build_filter_params(uuid, section, filter_data, index) do

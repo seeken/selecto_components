@@ -105,6 +105,26 @@ defmodule SelectoComponents.Execution.PlanTest do
     assert result.execution_error
   end
 
+  test "build keeps query-library segments alongside visual filters" do
+    socket =
+      base_socket()
+      |> Component.assign(:selecto, query_library_selecto())
+
+    plan =
+      Plan.build(
+        filter_params("language", "=", "English")
+        |> Map.put("query_library", %{
+          "segments" => ["released_after"],
+          "parameters" => %{"year" => "2000"}
+        }),
+        socket
+      )
+
+    assert {:release_year, {:gte, 2000}} in plan.selecto.set.filtered
+    assert {"language", "English"} in plan.selecto.set.filtered
+    assert Selecto.applied_query_library(plan.selecto).segments == ["released_after"]
+  end
+
   defp base_socket do
     %Phoenix.LiveView.Socket{
       assigns: %{
@@ -179,6 +199,36 @@ defmodule SelectoComponents.Execution.PlanTest do
         }
       },
       joins: %{customer: %{type: :left}}
+    }
+
+    Selecto.configure(domain, nil)
+  end
+
+  defp query_library_selecto do
+    domain = %{
+      name: "ExecutionPlanQueryLibraryTest",
+      source: %{
+        source_table: "films",
+        primary_key: :id,
+        fields: [:id, :language, :release_year],
+        redact_fields: [],
+        columns: %{
+          id: %{type: :integer, name: "ID", colid: :id},
+          language: %{type: :string, name: "Language", colid: :language},
+          release_year: %{type: :integer, name: "Release year", colid: :release_year}
+        },
+        associations: %{}
+      },
+      schemas: %{},
+      joins: %{},
+      query_library: %{
+        segments: %{
+          released_after: %{
+            filters: [{:gte, :release_year, {:param, :year}}],
+            parameters: %{year: %{type: :integer, required: true}}
+          }
+        }
+      }
     }
 
     Selecto.configure(domain, nil)

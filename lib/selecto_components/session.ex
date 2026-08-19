@@ -15,6 +15,7 @@ defmodule SelectoComponents.Session do
           sort: term(),
           paging: map(),
           feature_state: map(),
+          query_library: map(),
           active_tab: String.t(),
           revision: non_neg_integer(),
           applied_revision: non_neg_integer(),
@@ -28,6 +29,7 @@ defmodule SelectoComponents.Session do
             sort: nil,
             paging: %{},
             feature_state: %{},
+            query_library: %{view: nil, segments: [], parameters: %{}},
             active_tab: "view",
             revision: 0,
             applied_revision: 0,
@@ -50,6 +52,8 @@ defmodule SelectoComponents.Session do
       sort: Keyword.get(opts, :sort),
       paging: Keyword.get(opts, :paging, %{}),
       feature_state: Keyword.get(opts, :feature_state, %{}),
+      query_library:
+        get_value(view_config, :query_library, %{view: nil, segments: [], parameters: %{}}),
       active_tab: Keyword.get(opts, :active_tab, "view"),
       revision: revision,
       applied_revision: Keyword.get(opts, :applied_revision, revision),
@@ -63,7 +67,8 @@ defmodule SelectoComponents.Session do
       view_mode: session.view_mode,
       views: session.views,
       filters: session.filters,
-      ctes: session.ctes
+      ctes: session.ctes,
+      query_library: session.query_library
     }
   end
 

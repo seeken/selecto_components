@@ -11,7 +11,8 @@ defmodule SelectoComponents.Form.TabsTest do
       render_component(&Tabs.nav/1, %{
         active_tab: nil,
         theme: Theme.default_theme(:light),
-        use_saved_views: false
+        use_saved_views: false,
+        use_query_library: false
       })
 
     assert html =~ ~s(id="main-tab-view")
@@ -21,6 +22,19 @@ defmodule SelectoComponents.Form.TabsTest do
     assert html =~ "Filters"
     assert html =~ "Export"
     refute html =~ "Save View"
+  end
+
+  test "renders the query-library tab when named definitions are available" do
+    html =
+      render_component(&Tabs.nav/1, %{
+        active_tab: "library",
+        theme: Theme.default_theme(:light),
+        use_saved_views: false,
+        use_query_library: true
+      })
+
+    assert html =~ ~s(id="main-tab-library")
+    assert html =~ "Query Library"
   end
 
   test "renders the save tab when saved views are enabled" do

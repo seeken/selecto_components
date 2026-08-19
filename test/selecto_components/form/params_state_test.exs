@@ -1260,6 +1260,11 @@ defmodule SelectoComponents.Form.ParamsStateTest do
       filters: [
         {"f1", "filters", %{"filter" => "status", "comp" => "=", "value" => "open"}}
       ],
+      query_library: %{
+        view: "active_summaries",
+        segments: ["named_project"],
+        parameters: %{"minimum" => "3"}
+      },
       views: %{
         detail: %{
           selected: [{"d1", "id", %{"alias" => "ID"}}],
@@ -1301,6 +1306,12 @@ defmodule SelectoComponents.Form.ParamsStateTest do
     assert saved["views"]["aggregate"]["grid"] == true
     assert saved["views"]["graph"]["visual"]["type"] == "line"
     assert saved["views"]["graph"]["visual"]["series"] == ["s1", "c1"]
+
+    assert saved["query_library"] == %{
+             "view" => "active_summaries",
+             "segments" => ["named_project"],
+             "parameters" => %{"minimum" => "3"}
+           }
 
     assert Enum.map(saved["views"]["graph"]["group_by"], &Enum.at(&1, 1)) == [
              "status",

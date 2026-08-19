@@ -29,6 +29,25 @@ defmodule SelectoComponents.Session.URLTest do
     refute inspect(updated.redirected) =~ "patient-123"
   end
 
+  test "query-library selection is part of shareable URL state" do
+    params =
+      URL.view_config_to_params(%{
+        view_mode: "detail",
+        views: %{},
+        query_library: %{
+          view: "active_summaries",
+          segments: ["named_project"],
+          parameters: %{"minimum" => "3"}
+        }
+      })
+
+    assert params["query_library"] == %{
+             "view" => "active_summaries",
+             "segments" => ["named_project"],
+             "parameters" => %{"minimum" => "3"}
+           }
+  end
+
   defp socket(domain) do
     %Phoenix.LiveView.Socket{
       assigns: %{

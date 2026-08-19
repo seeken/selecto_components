@@ -7,6 +7,7 @@
 It is the package you use when you want users to:
 
 - build filters visually
+- apply reusable domain-owned query-library views and segments
 - choose fields for detail and aggregate views
 - switch between built-in result views
 - save/export/share views
@@ -121,6 +122,26 @@ config = %SelectoComponents.Explorer.Config{
 ```
 
 The current runtime still expects the parent LiveView to own state/event setup. `Explorer.Config` is the first host-facing config seam, not a full replacement for that compatibility path yet.
+
+## Query Library
+
+When the configured Selecto domain declares `query_library` views or segments,
+the form adds a Query Library tab automatically. Selecting a named view seeds
+its projection and ordering into the Detail builder, where the resulting fields
+and sort order remain editable. The view's named segments and any additional
+selected segments remain active as governed constraints alongside visual
+filters.
+
+Typed parameters are rendered from the segment definitions and normalized by
+Selecto before query execution. The complete selection—view, additional
+segments, and parameter values—round-trips through LiveView state, normal URL
+parameters, and saved views. In private query-state mode it remains in the
+LiveView/form payload instead of the browser URL.
+
+Projection associations are flattened to the component builder's dotted field
+paths (for example, `items.name`). Query-library `capability` values are shown
+as metadata only; host authorization and database row-level security remain
+separate enforcement boundaries.
 
 ## Common Add-Ons
 
