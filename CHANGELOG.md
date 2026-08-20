@@ -2,8 +2,8 @@
 CHANGES
 =======
 
-Unreleased - Query Library Integration
---------------------------------------
+V 0.5.0 - Adapter-Neutral Runtime and Query Library Integration
+----------------------------------------------------------------
 
 - Added a domain-driven Query Library form tab for named views, additional
   segments, metadata, and typed segment parameters.
@@ -11,10 +11,6 @@ Unreleased - Query Library Integration
   retaining named segments as governed constraints alongside visual filters.
 - Preserved query-library selections through LiveView state, URL parameters,
   and saved-view serialization.
-
-V 0.5.0 - Adapter-Neutral Runtime Boundary
--------------------------------------------
-
 - Added domain-selected `components.query_params: false` private state mode;
   query applies, pagination, drill-downs, and saved-view transitions remain in
   LiveView state while generated URLs stay path-only and inbound URL state is
@@ -30,6 +26,10 @@ V 0.5.0 - Adapter-Neutral Runtime Boundary
 - Replaced raw date/time, text-normalization, and bucket SQL with typed Selecto
   intent; Components no longer emits PostgreSQL casts, intervals, functions,
   or case-insensitive operators.
+- Added trusted domain-registry resolution for query-contract, guide,
+  intent-validation, and choice-source request boundaries. Opaque client domain
+  ids resolve with server-owned context while registry provenance remains
+  protected from request-supplied options.
 - Raised the Selecto package baseline to `0.5.0` and added a blocking
   PostgreSQL production-boundary gate.
 
