@@ -110,4 +110,14 @@ defmodule SelectoComponents.ThemeTest do
     assert Theme.slot(theme, :panel) == "sc-panel"
     assert Theme.slot(theme, :tab_active) == "sc-tab sc-tab-active"
   end
+
+  test "theme stylesheet lets host utility classes override semantic defaults" do
+    stylesheet = Theme.stylesheet()
+
+    assert stylesheet =~ "@layer components {"
+    assert stylesheet =~ ":where(.sc-btn) {"
+    assert stylesheet =~ ":where(.sc-btn-icon) {"
+    assert stylesheet =~ ":where(.sc-input, .sc-select) {"
+    refute stylesheet =~ "\n    .sc-btn {"
+  end
 end

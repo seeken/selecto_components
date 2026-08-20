@@ -103,136 +103,137 @@ defmodule SelectoComponents.Theme do
   @spec stylesheet() :: String.t()
   def stylesheet do
     """
-    .sc-theme-root {
-      background: var(--sc-surface-bg);
-      color: var(--sc-text-primary);
-      border-color: var(--sc-surface-border);
-    }
+    @layer components {
+      :where(.sc-theme-root) {
+        background: var(--sc-surface-bg);
+        color: var(--sc-text-primary);
+        border-color: var(--sc-surface-border);
+      }
 
-    .sc-panel {
-      background: var(--sc-surface-bg);
-      color: var(--sc-text-primary);
-      border: 1px solid var(--sc-surface-border);
-      border-radius: var(--sc-radius-lg);
-      box-shadow: var(--sc-shadow-sm);
-    }
+      :where(.sc-panel) {
+        background: var(--sc-surface-bg);
+        color: var(--sc-text-primary);
+        border: 1px solid var(--sc-surface-border);
+        border-radius: var(--sc-radius-lg);
+        box-shadow: var(--sc-shadow-sm);
+      }
 
-    .sc-panel-header {
-      color: var(--sc-text-primary);
-    }
+      :where(.sc-panel-header) {
+        color: var(--sc-text-primary);
+      }
 
-    .sc-tab {
-      border-bottom-width: 2px;
-      border-color: transparent;
-      color: var(--sc-text-muted);
-      transition: all 150ms ease;
-    }
+      :where(.sc-tab) {
+        border-bottom-width: 2px;
+        border-color: transparent;
+        color: var(--sc-text-muted);
+        transition: all 150ms ease;
+      }
 
-    .sc-tab:hover {
-      color: var(--sc-text-primary);
-      border-color: var(--sc-surface-border);
-    }
+      :where(.sc-tab:hover) {
+        color: var(--sc-text-primary);
+        border-color: var(--sc-surface-border);
+      }
 
-    .sc-tab-active {
-      border-color: var(--sc-accent);
-      color: var(--sc-accent);
-      background: var(--sc-accent-soft);
-    }
+      :where(.sc-tab-active) {
+        border-color: var(--sc-accent);
+        color: var(--sc-accent);
+        background: var(--sc-accent-soft);
+      }
 
-    .sc-tab-inactive {
-      color: var(--sc-text-muted);
-    }
+      :where(.sc-tab-inactive) {
+        color: var(--sc-text-muted);
+      }
 
-    .sc-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.375rem;
-      border-radius: var(--sc-radius-md);
-      border: 1px solid var(--sc-surface-border);
-      padding: 0.5rem 0.75rem;
-      font-size: 0.875rem;
-      font-weight: 500;
-      transition: all 150ms ease;
-    }
+      :where(.sc-btn) {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.375rem;
+        border-radius: var(--sc-radius-md);
+        border: 1px solid var(--sc-surface-border);
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        transition: all 150ms ease;
+      }
 
-    .sc-btn:focus-visible,
-    .sc-input:focus-visible,
-    .sc-select:focus-visible {
-      outline: 2px solid transparent;
-      box-shadow: 0 0 0 3px var(--sc-focus-ring);
-    }
+      :where(.sc-btn:focus-visible, .sc-input:focus-visible, .sc-select:focus-visible) {
+        outline: 2px solid transparent;
+        box-shadow: 0 0 0 3px var(--sc-focus-ring);
+      }
 
-    .sc-btn-secondary,
-    .sc-btn-icon {
-      background: var(--sc-surface-bg);
-      color: var(--sc-text-primary);
-    }
+      :where(.sc-btn-secondary, .sc-btn-icon) {
+        background: var(--sc-surface-bg);
+        color: var(--sc-text-primary);
+      }
 
-    .sc-btn-secondary:hover,
-    .sc-btn-icon:hover {
-      background: var(--sc-surface-bg-alt);
-      border-color: color-mix(in srgb, var(--sc-accent) 35%, var(--sc-surface-border));
-    }
+      :where(.sc-btn-icon) {
+        padding: 0;
+      }
 
-    .sc-btn-primary {
-      background: var(--sc-accent);
-      color: var(--sc-accent-contrast);
-      border-color: var(--sc-accent);
-    }
+      :where(.sc-btn-secondary:hover, .sc-btn-icon:hover) {
+        background: var(--sc-surface-bg-alt);
+        border-color: color-mix(in srgb, var(--sc-accent) 35%, var(--sc-surface-border));
+      }
 
-    .sc-btn-primary:hover {
-      background: var(--sc-accent-hover);
-      border-color: var(--sc-accent-hover);
-    }
+      :where(.sc-btn-primary) {
+        background: var(--sc-accent);
+        color: var(--sc-accent-contrast);
+        border-color: var(--sc-accent);
+      }
 
-    .sc-btn-danger {
-      background: var(--sc-danger-soft);
-      color: var(--sc-danger);
-      border-color: color-mix(in srgb, var(--sc-danger) 35%, var(--sc-surface-border));
-    }
+      :where(.sc-btn-primary:hover) {
+        background: var(--sc-accent-hover);
+        border-color: var(--sc-accent-hover);
+      }
 
-    .sc-btn-danger:hover {
-      background: color-mix(in srgb, var(--sc-danger) 14%, var(--sc-surface-bg));
-    }
+      :where(.sc-btn-danger) {
+        background: var(--sc-danger-soft);
+        color: var(--sc-danger);
+        border-color: color-mix(in srgb, var(--sc-danger) 35%, var(--sc-surface-border));
+      }
 
-    .sc-input,
-    .sc-select {
-      width: 100%;
-      border-radius: var(--sc-radius-md);
-      border: 1px solid var(--sc-surface-border);
-      background: var(--sc-surface-bg);
-      color: var(--sc-text-primary);
-      min-height: 2rem;
-      padding: 0.375rem 0.625rem;
-      font-size: 0.875rem;
-    }
+      :where(.sc-btn-danger:hover) {
+        background: color-mix(in srgb, var(--sc-danger) 14%, var(--sc-surface-bg));
+      }
 
-    .sc-checkbox-label {
-      color: var(--sc-text-primary);
-    }
+      :where(.sc-input, .sc-select) {
+        width: 100%;
+        border-radius: var(--sc-radius-md);
+        border: 1px solid var(--sc-surface-border);
+        background: var(--sc-surface-bg);
+        color: var(--sc-text-primary);
+        min-height: 2rem;
+        padding: 0.375rem 0.625rem;
+        font-size: 0.875rem;
+      }
 
-    .sc-bulk-action {
-      color: var(--sc-text-secondary);
-    }
+      :where(.sc-checkbox-label) {
+        color: var(--sc-text-primary);
+      }
 
-    .sc-bulk-action:hover {
-      background: var(--sc-surface-bg-alt);
-      color: var(--sc-text-primary);
-    }
+      :where(.sc-bulk-action) {
+        color: var(--sc-text-secondary);
+      }
 
-    .sc-bulk-action-destructive {
-      color: var(--sc-danger);
-    }
+      :where(.sc-bulk-action:hover) {
+        background: var(--sc-surface-bg-alt);
+        color: var(--sc-text-primary);
+      }
 
-    .sc-bulk-action-destructive:hover {
-      background: var(--sc-danger-soft);
-      color: var(--sc-danger);
-    }
+      :where(.sc-bulk-action-destructive) {
+        color: var(--sc-danger);
+      }
 
-    .sc-bulk-action-disabled {
-      color: var(--sc-text-muted);
-      opacity: 0.65;
+      :where(.sc-bulk-action-destructive:hover) {
+        background: var(--sc-danger-soft);
+        color: var(--sc-danger);
+      }
+
+      :where(.sc-bulk-action-disabled) {
+        color: var(--sc-text-muted);
+        opacity: 0.65;
+      }
     }
     """
   end

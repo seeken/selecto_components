@@ -29,7 +29,7 @@ defmodule SelectoComponents.Components.TreeBuilder do
         <div
           phx-hook=".TreeBuilder"
           id={"tree-builder-#{@id}"}
-          class="grid min-h-0 grid-cols-1 gap-3 sm:grid-cols-[minmax(10rem,13rem)_minmax(0,1fr)] sm:grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[minmax(11rem,14rem)_minmax(0,1fr)]"
+          class="grid min-h-0 grid-cols-1 gap-3 sm:grid-cols-2 sm:grid-rows-[auto_minmax(0,1fr)]"
           data-filter=""
         >
           <div class="min-w-0" style="color: var(--sc-text-primary);">

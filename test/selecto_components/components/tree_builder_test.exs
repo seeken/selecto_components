@@ -19,11 +19,11 @@ defmodule SelectoComponents.Components.TreeBuilderTest do
     Map.merge(base, overrides)
   end
 
-  test "renders a narrow available column and taller build area" do
+  test "renders equal available and build columns with a taller build area" do
     html = render_component(TreeBuilder, base_assigns())
 
-    assert html =~ "sm:grid-cols-[minmax(10rem,13rem)_minmax(0,1fr)]"
-    assert html =~ "md:grid-cols-[minmax(11rem,14rem)_minmax(0,1fr)]"
+    assert html =~ "grid-cols-1"
+    assert html =~ "sm:grid-cols-2"
     assert html =~ "h-96"
     assert html =~ "xl:h-[32rem]"
     assert html =~ "rounded-lg border px-3 py-2 text-sm"
