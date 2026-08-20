@@ -15,6 +15,7 @@ defmodule SelectoComponents.Form.FilterPanel do
   attr(:filters, :list, default: [])
 
   slot(:filter_form, required: true)
+  slot(:query_library)
 
   def panel(assigns) do
     ~H"""
@@ -24,6 +25,10 @@ defmodule SelectoComponents.Form.FilterPanel do
       aria-labelledby="main-tab-filter"
       class={if @active_tab == "filter", do: Theme.slot(@theme, :panel) <> " p-3", else: "hidden"}
     >
+      <div :if={@query_library != []}>
+        {render_slot(@query_library)}
+      </div>
+
       <.live_component
         :if={@filter_sets_adapter}
         module={SelectoComponents.Filter.FilterSets}

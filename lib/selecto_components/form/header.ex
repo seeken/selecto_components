@@ -13,11 +13,22 @@ defmodule SelectoComponents.Form.Header do
   attr(:applied_filters, :list, default: [])
   attr(:promoted_filters, :list, default: [])
   attr(:chip_filters, :list, default: [])
+  attr(:governed_filters, :list, default: [])
   attr(:show_view_configurator, :boolean, default: true)
 
   slot(:promoted_filter)
 
   def summary(assigns) do
+    summary_chips =
+      Enum.map(assigns.chip_filters, &summary_chip(&1, true)) ++
+        Enum.map(assigns.governed_filters, &summary_chip(&1, false))
+
+    assigns =
+      assign(assigns,
+        applied_filter_count: length(assigns.applied_filters) + length(assigns.governed_filters),
+        summary_chips: summary_chips
+      )
+
     ~H"""
     <div
       id={"selecto-controller-summary-#{@id}"}
@@ -60,7 +71,7 @@ defmodule SelectoComponents.Form.Header do
                 class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium"
                 style="background: color-mix(in srgb, var(--sc-primary) 14%, transparent); color: var(--sc-primary);"
               >
-                {length(@applied_filters)} applied filter{if(length(@applied_filters) == 1, do: "", else: "s")}
+                {@applied_filter_count} applied filter{if(@applied_filter_count == 1, do: "", else: "s")}
               </span>
             </div>
           </div>
@@ -92,20 +103,22 @@ defmodule SelectoComponents.Form.Header do
             </div>
           </div>
 
-          <div :if={Enum.empty?(@applied_filters) or @chip_filters != []} class="flex flex-wrap items-center gap-2">
-            <%= if Enum.empty?(@applied_filters) do %>
+          <div :if={@applied_filter_count == 0 or @summary_chips != []} class="flex flex-wrap items-center gap-2">
+            <%= if @applied_filter_count == 0 do %>
               <span class="text-sm" style="color: var(--sc-text-secondary);">
                 No filters applied
               </span>
             <% else %>
-              <%= for filter <- Enum.take(@chip_filters, 4) do %>
+              <%= for filter <- Enum.take(@summary_chips, 4) do %>
                 <span
                   class="inline-flex items-center gap-1 rounded-full border py-1 pl-2.5 pr-1 text-xs font-medium"
                   style="border-color: var(--sc-surface-border); background: var(--sc-surface-bg); color: var(--sc-text-secondary);"
-                  data-filter-summary-chip={filter.uuid}
+                  data-filter-summary-chip={if filter.removable, do: filter.uuid}
+                  data-query-library-segment-summary={filter.segment_id}
                 >
                   <span class="truncate">{filter.summary}</span>
                   <button
+                    :if={filter.removable}
                     type="button"
                     phx-click="filter_remove"
                     phx-value-uuid={filter.uuid}
@@ -120,8 +133,8 @@ defmodule SelectoComponents.Form.Header do
                 </span>
               <% end %>
 
-              <span :if={length(@chip_filters) > 4} class="text-xs font-medium" style="color: var(--sc-text-muted);">
-                +{length(@chip_filters) - 4} more
+              <span :if={length(@summary_chips) > 4} class="text-xs font-medium" style="color: var(--sc-text-muted);">
+                +{length(@summary_chips) - 4} more
               </span>
             <% end %>
           </div>
@@ -129,5 +142,18 @@ defmodule SelectoComponents.Form.Header do
       </div>
     </div>
     """
+  end
+
+  defp summary_chip(filter, removable) do
+    %{
+      uuid: Map.get(filter, :uuid) || Map.get(filter, "uuid"),
+      summary: Map.get(filter, :summary) || Map.get(filter, "summary"),
+      removable: removable,
+      segment_id:
+        if(removable,
+          do: nil,
+          else: Map.get(filter, :id) || Map.get(filter, "id")
+        )
+    }
   end
 end

@@ -40,6 +40,24 @@ defmodule SelectoComponents.Form.HeaderTest do
     assert html =~ ~s(data-filter-summary-remove)
   end
 
+  test "counts governed segments and does not claim that no filters are applied" do
+    html =
+      render_component(
+        &Header.summary/1,
+        base_assigns(%{
+          applied_filters: [],
+          chip_filters: [],
+          governed_filters: [%{id: "active_projects", summary: "Segment: Active projects"}]
+        })
+      )
+
+    assert html =~ "1 applied filter"
+    assert html =~ "Segment: Active projects"
+    assert html =~ ~s(data-query-library-segment-summary="active_projects")
+    refute html =~ "No filters applied"
+    refute html =~ ~s(data-filter-summary-remove)
+  end
+
   test "renders promoted filter content through the slot" do
     html =
       render_component(

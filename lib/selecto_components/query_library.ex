@@ -57,6 +57,35 @@ defmodule SelectoComponents.QueryLibrary do
     |> Enum.sort_by(&{String.downcase(&1.label), &1.id})
   end
 
+  @doc "Returns the directly selected segments plus segments governed by the selected named view."
+  @spec active_segment_entries(Selecto.t() | map(), map()) :: [map()]
+  def active_segment_entries(selecto_or_domain, view_config) do
+    library = Selecto.query_library(selecto_or_domain)
+    selection = selection(view_config)
+
+    view_segments =
+      case fetch_definition(library.views, selection.view) do
+        nil -> []
+        view -> List.wrap(map_value(view, :segments))
+      end
+
+    entries_by_id =
+      selecto_or_domain
+      |> entries(:segments)
+      |> Map.new(&{&1.id, &1})
+
+    view_segments
+    |> Kernel.++(selection.segments)
+    |> Enum.map(&to_string/1)
+    |> Enum.uniq()
+    |> Enum.flat_map(fn id ->
+      case Map.fetch(entries_by_id, id) do
+        {:ok, entry} -> [entry]
+        :error -> []
+      end
+    end)
+  end
+
   @spec parameter_entries(Selecto.t() | map(), map()) :: [map()]
   def parameter_entries(selecto_or_domain, selection) do
     library = Selecto.query_library(selecto_or_domain)
@@ -388,6 +417,7 @@ defmodule SelectoComponents.QueryLibrary do
 
   defp metadata(spec, key) when is_map(spec) do
     case map_value(spec, key) do
+      nil -> nil
       value when is_binary(value) -> String.trim(value) |> blank_to_nil()
       value when is_atom(value) -> Atom.to_string(value)
       _ -> nil

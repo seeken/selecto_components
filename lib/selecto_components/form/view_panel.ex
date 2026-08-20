@@ -14,6 +14,7 @@ defmodule SelectoComponents.Form.ViewPanel do
   attr(:views, :list, required: true)
   attr(:columns, :list, required: true)
   attr(:selecto, :any, required: true)
+  slot(:query_library)
 
   def panel(assigns) do
     assigns =
@@ -30,6 +31,10 @@ defmodule SelectoComponents.Form.ViewPanel do
       aria-labelledby="main-tab-view"
       class={if @active_tab == "view" or @active_tab == nil, do: Theme.slot(@theme, :panel) <> " p-3", else: "hidden"}
     >
+      <div :if={@query_library != []}>
+        {render_slot(@query_library)}
+      </div>
+
       <.live_component
         :if={@saved_view_config_module}
         module={SelectoComponents.ViewConfigManager}

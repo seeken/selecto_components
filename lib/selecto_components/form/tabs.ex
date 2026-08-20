@@ -7,7 +7,6 @@ defmodule SelectoComponents.Form.Tabs do
   attr(:active_tab, :string, default: nil)
   attr(:theme, :map, required: true)
   attr(:use_saved_views, :boolean, default: false)
-  attr(:use_query_library, :boolean, default: false)
 
   def nav(assigns) do
     ~H"""
@@ -23,15 +22,6 @@ defmodule SelectoComponents.Form.Tabs do
 
         <.tab_button active={@active_tab == "filter"} theme={@theme} tab="filter">
           Filters
-        </.tab_button>
-
-        <.tab_button
-          :if={@use_query_library}
-          active={@active_tab == "library"}
-          theme={@theme}
-          tab="library"
-        >
-          Query Library
         </.tab_button>
 
         <.tab_button :if={@use_saved_views} active={@active_tab == "save"} theme={@theme} tab="save">

@@ -95,6 +95,54 @@ defmodule SelectoComponents.FormTest do
     assert html =~ "Filters"
   end
 
+  test "places named views in View, segments in Filters, and summarizes governed filters" do
+    base = base_assigns(%{})
+
+    query_library = %{
+      segments: %{
+        active_projects: %{label: "Active projects", filters: [{:eq, :status, "active"}]}
+      },
+      projections: %{summary: %{fields: [:id, :status]}},
+      orderings: %{},
+      views: %{
+        active_summary: %{
+          label: "Active summary",
+          segments: [:active_projects],
+          projection: :summary
+        }
+      }
+    }
+
+    selecto = Selecto.configure(Map.put(base.selecto.domain, :query_library, query_library), nil)
+
+    html =
+      render_component(
+        Form,
+        Map.merge(base, %{
+          selecto: selecto,
+          active_tab: "library",
+          view_config:
+            base.view_config
+            |> Map.put(:filters, [])
+            |> Map.put(:query_library, %{
+              view: "active_summary",
+              segments: [],
+              parameters: %{}
+            })
+        })
+      )
+
+    assert html =~ ~s(data-selecto-active-tab="filter")
+    assert html =~ ~s(data-query-library-view-controls)
+    assert html =~ ~s(data-query-library-filter-controls)
+    assert html =~ ~s(name="query_library[view]")
+    assert html =~ ~s(name="query_library[segments][]")
+    assert html =~ "1 applied filter"
+    assert html =~ "Segment: Active projects"
+    refute html =~ "No filters applied"
+    refute html =~ ~s(id="main-tab-library")
+  end
+
   test "wires copy aggregate to graph through the root form hook" do
     html =
       render_component(

@@ -9,25 +9,36 @@ defmodule SelectoComponents.Form.QueryLibraryPanel do
   attr(:theme, :map, required: true)
 
   def panel(assigns) do
+    ~H"""
+    <div class="space-y-5">
+      <.view_controls selecto={@selecto} view_config={@view_config} theme={@theme} />
+      <.filter_controls selecto={@selecto} view_config={@view_config} theme={@theme} />
+    </div>
+    """
+  end
+
+  attr(:selecto, :any, required: true)
+  attr(:view_config, :map, required: true)
+  attr(:theme, :map, required: true)
+
+  def view_controls(assigns) do
     selection = QueryLibrary.selection(assigns.view_config)
+    views = QueryLibrary.entries(assigns.selecto, :views)
 
     assigns =
       assign(assigns,
         selection: selection,
-        views: QueryLibrary.entries(assigns.selecto, :views),
-        segments: QueryLibrary.entries(assigns.selecto, :segments),
-        parameters: QueryLibrary.parameter_entries(assigns.selecto, selection),
-        selected_view:
-          Enum.find(QueryLibrary.entries(assigns.selecto, :views), &(&1.id == selection.view))
+        views: views,
+        selected_view: Enum.find(views, &(&1.id == selection.view))
       )
 
     ~H"""
-    <div class="space-y-5">
+    <section :if={@views != []} class="mb-5 space-y-3" data-query-library-view-controls>
       <p class="text-sm" style="color: var(--sc-text-secondary);">
-        Named views seed the editable Detail columns and ordering. Named segments remain active as governed constraints alongside visual filters.
+        Named views seed the editable Detail columns and ordering. The seeded view remains editable.
       </p>
 
-      <label :if={@views != []} class="block text-sm">
+      <label class="block text-sm">
         <span class="font-medium">Named view</span>
         <select
           name="query_library[view]"
@@ -49,9 +60,37 @@ defmodule SelectoComponents.Form.QueryLibraryPanel do
           Capability metadata: {@selected_view.capability}
         </p>
       </div>
+    </section>
+    """
+  end
+
+  attr(:selecto, :any, required: true)
+  attr(:view_config, :map, required: true)
+  attr(:theme, :map, required: true)
+
+  def filter_controls(assigns) do
+    selection = QueryLibrary.selection(assigns.view_config)
+
+    assigns =
+      assign(assigns,
+        selection: selection,
+        segments: QueryLibrary.entries(assigns.selecto, :segments),
+        parameters: QueryLibrary.parameter_entries(assigns.selecto, selection)
+      )
+
+    ~H"""
+    <section
+      :if={@segments != [] or @parameters != []}
+      class="mb-5 space-y-4"
+      data-query-library-filter-controls
+    >
+      <p class="text-sm" style="color: var(--sc-text-secondary);">
+        Named segments add governed constraints alongside the visual filters below.
+      </p>
 
       <fieldset :if={@segments != []}>
-        <legend class="text-sm font-medium">Additional named segments</legend>
+        <legend class="text-sm font-medium">Named segments</legend>
+        <input type="hidden" name="query_library[segments][]" value="" />
         <div class="mt-2 grid gap-2 md:grid-cols-2">
           <label :for={segment <- @segments} class={Theme.slot(@theme, :panel) <> " flex gap-2 px-3 py-2 text-sm"}>
             <input
@@ -103,7 +142,7 @@ defmodule SelectoComponents.Form.QueryLibraryPanel do
           </label>
         </div>
       </fieldset>
-    </div>
+    </section>
     """
   end
 end

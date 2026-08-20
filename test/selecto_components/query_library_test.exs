@@ -52,6 +52,16 @@ defmodule SelectoComponents.QueryLibraryTest do
            ]
   end
 
+  test "active segment entries include view-governed and additionally selected segments once" do
+    assert QueryLibrary.active_segment_entries(selecto(), %{
+             query_library: %{
+               view: "active_summaries",
+               segments: ["active", "named_project"]
+             }
+           })
+           |> Enum.map(& &1.id) == ["active", "priority_at_least", "named_project"]
+  end
+
   test "a materialized view remains editable until another preset is selected" do
     previous = %{
       query_library: %{view: "active_summaries", segments: [], parameters: %{}},
@@ -79,7 +89,51 @@ defmodule SelectoComponents.QueryLibraryTest do
     end
   end
 
-  test "query-library panel renders metadata, governed choices, and typed parameters" do
+  test "query-library controls split named views from segment filters and parameters" do
+    view_html =
+      render_component(&QueryLibraryPanel.view_controls/1, %{
+        selecto: selecto(),
+        view_config: %{
+          query_library: %{
+            view: "active_summaries",
+            segments: [],
+            parameters: %{"minimum" => "7"}
+          }
+        },
+        theme: Theme.default_theme(:light)
+      })
+
+    filter_html =
+      render_component(&QueryLibraryPanel.filter_controls/1, %{
+        selecto: selecto(),
+        view_config: %{
+          query_library: %{
+            view: "active_summaries",
+            segments: [],
+            parameters: %{"minimum" => "7"}
+          }
+        },
+        theme: Theme.default_theme(:light)
+      })
+
+    assert view_html =~ ~s(data-query-library-view-controls)
+    assert view_html =~ ~s(name="query_library[view]")
+    assert view_html =~ "Active summaries"
+    assert view_html =~ "Reusable active project summary"
+    refute view_html =~ ~s(name="query_library[segments][]")
+    refute view_html =~ ~s(name="query_library[parameters][minimum]")
+
+    assert filter_html =~ ~s(data-query-library-filter-controls)
+    assert filter_html =~ ~s(name="query_library[segments][]")
+    assert filter_html =~ ~s(name="query_library[parameters][minimum]")
+    assert filter_html =~ ~s(type="number")
+    assert filter_html =~ ~s(value="7")
+    assert filter_html =~ "Capability metadata: projects.read"
+    refute filter_html =~ ~s(name="query_library[view]")
+    refute filter_html =~ "Capability metadata: nil"
+  end
+
+  test "combined query-library panel remains available for direct callers" do
     html =
       render_component(&QueryLibraryPanel.panel/1, %{
         selecto: selecto(),
@@ -93,12 +147,23 @@ defmodule SelectoComponents.QueryLibraryTest do
         theme: Theme.default_theme(:light)
       })
 
-    assert html =~ "Active summaries"
-    assert html =~ "Reusable active project summary"
+    assert html =~ ~s(data-query-library-view-controls)
+    assert html =~ ~s(data-query-library-filter-controls)
     assert html =~ ~s(name="query_library[parameters][minimum]")
-    assert html =~ ~s(type="number")
-    assert html =~ ~s(value="7")
-    assert html =~ "Capability metadata: projects.read"
+  end
+
+  test "entries humanize ids and keep missing optional metadata absent" do
+    active =
+      selecto()
+      |> QueryLibrary.entries(:segments)
+      |> Enum.find(&(&1.id == "active"))
+
+    assert active == %{
+             id: "active",
+             label: "Active",
+             description: nil,
+             capability: nil
+           }
   end
 
   defp selecto do
