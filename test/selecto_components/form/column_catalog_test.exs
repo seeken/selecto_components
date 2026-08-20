@@ -10,7 +10,7 @@ defmodule SelectoComponents.Form.ColumnCatalogTest do
       source: %{
         source_table: "records",
         primary_key: :id,
-        fields: [:id, :status, :priority, :customer_id],
+        fields: [:id, :status, :priority, :customer_id, :tenant_id],
         redact_fields: [],
         columns: %{
           id: %{type: :integer, name: "ID"},
@@ -20,6 +20,13 @@ defmodule SelectoComponents.Form.ColumnCatalogTest do
             type: :integer,
             name: "Customer",
             choice_source: :customer_choices
+          },
+          tenant_id: %{
+            type: :integer,
+            name: "Tenant ID",
+            selectable: false,
+            filterable: false,
+            sortable: false
           }
         },
         associations: %{}
@@ -91,5 +98,16 @@ defmodule SelectoComponents.Form.ColumnCatalogTest do
              "active_delivery_projects.priority",
              "active_delivery_projects.priority"
            ]) == ["active_delivery_projects"]
+  end
+
+  test "picker and filter surfaces exclude locked policy fields" do
+    refute Enum.any?(ColumnCatalog.picker_columns(selecto()), fn {id, _name, _metadata} ->
+             to_string(id) == "tenant_id"
+           end)
+
+    refute Enum.any?(
+             SelectoComponents.Form.FilterRendering.build_filter_list(selecto()),
+             fn {id, _name, _metadata} -> to_string(id) == "tenant_id" end
+           )
   end
 end

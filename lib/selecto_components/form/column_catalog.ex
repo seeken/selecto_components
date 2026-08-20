@@ -21,10 +21,21 @@ defmodule SelectoComponents.Form.ColumnCatalog do
   def picker_columns(%Selecto{} = selecto) do
     cte_names = available_cte_names(selecto)
     choice_source_metadata = choice_source_metadata_by_field(selecto)
+    query_surfaces = query_surface_by_field(selecto)
 
     selecto
     |> picker_selecto()
     |> Selecto.columns()
+    |> Enum.filter(fn {colid, column} ->
+      column_allows? = Map.get(column, :selectable, true)
+
+      surface_allows? =
+        query_surfaces
+        |> Map.get(to_string(colid), %{})
+        |> Map.get("detail_selectable", true)
+
+      column_allows? and surface_allows?
+    end)
     |> Enum.map(fn {colid, column} ->
       column = Map.put_new(column, :colid, colid)
 
@@ -104,6 +115,25 @@ defmodule SelectoComponents.Form.ColumnCatalog do
   end
 
   def choice_source_metadata_by_field(_selecto, _opts), do: %{}
+
+  def query_surface_by_field(%Selecto{} = selecto) do
+    selecto
+    |> Selecto.domain()
+    |> QueryContract.json_document()
+    |> case do
+      {:ok, document, _diagnostics} ->
+        document
+        |> Map.get("fields", [])
+        |> Map.new(fn field -> {to_string(Map.fetch!(field, "id")), field} end)
+
+      {:error, _diagnostics} ->
+        %{}
+    end
+  rescue
+    _exception -> %{}
+  end
+
+  def query_surface_by_field(_selecto), do: %{}
 
   defp base_selecto(%Selecto{} = selecto) do
     Selecto.configure(

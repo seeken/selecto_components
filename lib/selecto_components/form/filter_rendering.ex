@@ -2416,17 +2416,25 @@ defmodule SelectoComponents.Form.FilterRendering do
   """
   def build_filter_list(selecto, opts \\ []) do
     choice_source_metadata_by_field = filter_choice_source_metadata_by_field(selecto, opts)
+    query_surfaces = ColumnCatalog.query_surface_by_field(selecto)
 
     # Include explicit filters and only columns that are marked as filterable
     filterable_columns =
       Selecto.columns(selecto)
       |> Enum.map(fn {colid, column} -> Map.put_new(column, :colid, colid) end)
       |> Enum.filter(fn column ->
+        surface = Map.get(query_surfaces, to_string(column.colid))
+
         # Only include columns that are explicitly marked as filterable
         # or don't have component formatting (which indicates they're display-only)
-        Map.get(column, :make_filter, false) or
-          ((not Map.has_key?(column, :format) or Map.get(column, :format) == nil) and
-             not Map.has_key?(column, :component))
+        policy_allows? =
+          Map.get(column, :filterable, true) and
+            (is_nil(surface) or Map.get(surface, "filterable", false))
+
+        policy_allows? and
+          (Map.get(column, :make_filter, false) or
+             ((not Map.has_key?(column, :format) or Map.get(column, :format) == nil) and
+                not Map.has_key?(column, :component)))
       end)
 
     (Map.values(Selecto.filters(selecto)) ++ filterable_columns)
