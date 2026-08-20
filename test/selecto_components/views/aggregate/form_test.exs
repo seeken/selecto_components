@@ -1,11 +1,87 @@
 defmodule SelectoComponents.Views.Aggregate.FormTest do
   use ExUnit.Case, async: true
 
+  import Phoenix.Component, only: [live_component: 1, sigil_H: 2]
   import Phoenix.LiveViewTest, only: [render_component: 2]
 
   alias SelectoComponents.Views.Aggregate.Aggregate.Config
   alias SelectoComponents.Views.Aggregate.Form
   alias SelectoComponents.Views.Aggregate.GroupByConfig
+
+  test "namespaces copied Aggregate and Graph item component identities" do
+    domain = %{
+      name: "AggregateFormIdentityTest",
+      source: %{
+        source_table: "items",
+        primary_key: :id,
+        fields: [:id, :status],
+        redact_fields: [],
+        columns: %{
+          id: %{type: :integer, name: "ID", colid: :id},
+          status: %{type: :string, name: "Status", colid: :status}
+        },
+        associations: %{}
+      },
+      schemas: %{},
+      joins: %{}
+    }
+
+    shared_group_id = "d014afd6-4a5d-4bfe-8daa-7f139548cec6"
+    shared_aggregate_id = "copied-aggregate-id"
+
+    view_config = %{
+      views: %{
+        aggregate: %{
+          group_by: [{shared_group_id, "status", %{"format" => "default"}}],
+          aggregate: [{shared_aggregate_id, "id", %{"format" => "count"}}]
+        },
+        graph: %{
+          group_by: [{shared_group_id, "status", %{"format" => "default"}}],
+          aggregate: [{shared_aggregate_id, "id", %{"format" => "count"}}]
+        }
+      }
+    }
+
+    html =
+      render_component(
+        fn assigns ->
+          ~H"""
+          <.live_component
+            module={Form}
+            id="aggregate-analytic-form"
+            columns={@columns}
+            view={@aggregate_view}
+            selecto={@selecto}
+            view_config={@view_config}
+          />
+          <.live_component
+            module={Form}
+            id="graph-analytic-form"
+            columns={@columns}
+            view={@graph_view}
+            selecto={@selecto}
+            view_config={@view_config}
+            state_view_key={:graph}
+            query_only={true}
+            group_param="graph_group_by"
+            aggregate_param="graph_aggregate"
+          />
+          """
+        end,
+        %{
+          columns: [{:id, "ID", :integer}, {:status, "Status", :string}],
+          aggregate_view: {:aggregate, SelectoComponents.Views.Aggregate, "Aggregate", %{}},
+          graph_view: {:graph, SelectoComponents.Views.Graph, "Graph", %{}},
+          selecto: Selecto.configure(domain, nil),
+          view_config: view_config
+        }
+      )
+
+    assert html =~ "group_by[#{shared_group_id}][field]"
+    assert html =~ "graph_group_by[#{shared_group_id}][field]"
+    assert html =~ "aggregate[#{shared_aggregate_id}][field]"
+    assert html =~ "graph_aggregate[#{shared_aggregate_id}][field]"
+  end
 
   test "section summary lists selected group-by field names" do
     domain = %{

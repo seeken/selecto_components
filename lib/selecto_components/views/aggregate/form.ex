@@ -191,7 +191,7 @@ defmodule SelectoComponents.Views.Aggregate.Form do
           <input name={"#{@group_param}[#{id}][index]"} type="hidden" value={index} />
           <.live_component
             module={SelectoComponents.Views.Aggregate.GroupByConfig}
-            id={id}
+            id={config_component_id(@state_view_key, :group_by, id)}
             col={get_field_for_item(@selecto, item)}
             uuid={id}
             item={item}
@@ -269,7 +269,7 @@ defmodule SelectoComponents.Views.Aggregate.Form do
           <input name={"#{@aggregate_param}[#{id}][index]"} type="hidden" value={index} />
           <.live_component
             module={SelectoComponents.Views.Aggregate.Aggregate.Config}
-            id={id}
+            id={config_component_id(@state_view_key, :aggregate, id)}
             col={get_field_for_item(@selecto, item)}
             uuid={id}
             item={item}
@@ -293,6 +293,8 @@ defmodule SelectoComponents.Views.Aggregate.Form do
 
   defp picker_id(:graph, list), do: "graph_#{list}"
   defp picker_id(_view, list), do: to_string(list)
+
+  defp config_component_id(view, list, id), do: "#{view}-#{list}-#{id}"
 
   defp component_or_link_column?(metadata) when metadata in [:component, :link], do: true
 
