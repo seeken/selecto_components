@@ -58,6 +58,33 @@ defmodule SelectoComponents.Execution.PlanTest do
     assert {:field, "customer.name", "customer.name"} in Map.get(plan.selecto.set, :selected, [])
   end
 
+  test "build preserves server-attached tenant context and required scope" do
+    selecto =
+      tenant_selecto()
+      |> Selecto.with_tenant(%{tenant_id: 42, required: true})
+      |> Selecto.apply_tenant_scope()
+
+    socket = Component.assign(base_socket(), :selecto, selecto)
+
+    plan =
+      Plan.build(
+        %{
+          "view_mode" => "detail",
+          "selected" => %{
+            "k0" => %{"field" => "id", "index" => "0", "uuid" => "d1"}
+          }
+        },
+        socket
+      )
+
+    assert Selecto.tenant(plan.selecto).tenant_id == 42
+    assert {"tenant_id", 42} in Selecto.required_filters(plan.selecto)
+
+    {sql, params} = Selecto.to_sql(plan.selecto)
+    assert sql =~ "tenant_id"
+    assert 42 in params
+  end
+
   test "build normalizes unknown view mode to safe default" do
     plan = Plan.build(%{"view_mode" => "missing_view"}, base_socket())
 
@@ -199,6 +226,28 @@ defmodule SelectoComponents.Execution.PlanTest do
         }
       },
       joins: %{customer: %{type: :left}}
+    }
+
+    Selecto.configure(domain, nil)
+  end
+
+  defp tenant_selecto do
+    domain = %{
+      name: "ExecutionPlanTenantTest",
+      tenant_required: true,
+      source: %{
+        source_table: "work_items",
+        primary_key: :id,
+        fields: [:id, :tenant_id],
+        redact_fields: [],
+        columns: %{
+          id: %{type: :integer, name: "ID", colid: :id},
+          tenant_id: %{type: :integer, name: "Tenant ID", colid: :tenant_id}
+        },
+        associations: %{}
+      },
+      schemas: %{},
+      joins: %{}
     }
 
     Selecto.configure(domain, nil)

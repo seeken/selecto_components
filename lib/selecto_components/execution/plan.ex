@@ -102,13 +102,19 @@ defmodule SelectoComponents.Execution.Plan do
   end
 
   defp rebuild_selecto(old_selecto) do
-    old_selecto.domain
-    |> Selecto.configure(
-      old_selecto.connection,
-      adapter: old_selecto.adapter,
-      validate: false
-    )
-    |> Map.put(:domain_ref, Map.get(old_selecto, :domain_ref))
+    rebuilt =
+      old_selecto.domain
+      |> Selecto.configure(
+        old_selecto.connection,
+        adapter: old_selecto.adapter,
+        validate: false
+      )
+      |> Map.put(:domain_ref, Map.get(old_selecto, :domain_ref))
+
+    case Selecto.tenant(old_selecto) do
+      nil -> rebuilt
+      tenant -> rebuilt |> Selecto.with_tenant(tenant) |> Selecto.apply_tenant_scope()
+    end
   end
 
   defp put_runtime_presentation_context(params, presentation_context) when is_map(params) do

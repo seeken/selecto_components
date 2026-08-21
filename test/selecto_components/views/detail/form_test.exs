@@ -44,7 +44,7 @@ defmodule SelectoComponents.Views.Detail.FormTest do
             detail: %{
               selected: [],
               order_by: [],
-              per_page: "30",
+              per_page: "50",
               max_rows: "1000",
               count_mode: "bounded",
               row_click_action: "work_item_api_json",
@@ -57,6 +57,7 @@ defmodule SelectoComponents.Views.Detail.FormTest do
     assert html =~ ~s(id="detail-row-click-action-work_item_api_json")
     assert html =~ ~s(name="row_click_action")
     assert html =~ ~s(phx-change="set_row_click_action")
+    assert html =~ ~s(<option selected value="50">)
     assert html =~ ~s(<option value="work_item_api_json" selected>)
   end
 

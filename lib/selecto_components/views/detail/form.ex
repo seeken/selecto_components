@@ -37,6 +37,15 @@ defmodule SelectoComponents.Views.Detail.Form do
       |> Map.get(:per_page, Map.get(detail_config, "per_page", "30"))
       |> to_string()
 
+    per_page_options =
+      case Integer.parse(per_page) do
+        {current, ""} when current > 0 ->
+          Enum.sort(Enum.uniq([current | @detail_per_page_options]))
+
+        _ ->
+          @detail_per_page_options
+      end
+
     max_rows =
       detail_config
       |> Map.get(:max_rows, Map.get(detail_config, "max_rows", "1000"))
@@ -76,7 +85,7 @@ defmodule SelectoComponents.Views.Detail.Form do
       |> Map.put(:detail_count_mode, count_mode)
       |> Map.put(:detail_row_click_action, row_click_action)
       |> Map.put(:detail_prevent_denormalization, prevent_denormalization)
-      |> Map.put(:detail_per_page_options, @detail_per_page_options)
+      |> Map.put(:detail_per_page_options, per_page_options)
       |> Map.put(:detail_max_rows_options, Options.max_rows_options())
       |> Map.put(:detail_count_mode_options, Options.count_mode_options())
       |> Map.put(:row_action_options, row_action_options)
