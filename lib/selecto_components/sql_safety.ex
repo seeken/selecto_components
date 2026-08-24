@@ -27,7 +27,7 @@ defmodule SelectoComponents.SqlSafety do
     timezone = String.trim(value)
 
     if timezone != "" and Regex.match?(@safe_timezone, timezone) and
-         Timex.Timezone.exists?(timezone) do
+         Tzdata.zone_exists?(timezone) do
       timezone
     else
       default

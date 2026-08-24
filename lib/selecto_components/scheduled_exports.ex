@@ -176,10 +176,11 @@ defmodule SelectoComponents.ScheduledExports do
     if truthy?(field(schedule, :enabled, false)) do
       timezone = normalize_timezone(field(schedule, :timezone, "Etc/UTC"))
 
-      with {:ok, local_now} <- DateTime.shift_zone(now, timezone),
+      with {:ok, local_now} <- DateTime.shift_zone(now, timezone, Tzdata.TimeZoneDatabase),
            {hour, minute} <- parse_time_parts(field(schedule, :time, "07:00")),
            %DateTime{} = local_next <- compute_local_next_run(schedule, local_now, hour, minute),
-           {:ok, utc_next} <- DateTime.shift_zone(local_next, "Etc/UTC") do
+           {:ok, utc_next} <-
+             DateTime.shift_zone(local_next, "Etc/UTC", Tzdata.TimeZoneDatabase) do
         utc_next
       else
         _ -> nil
@@ -425,7 +426,7 @@ defmodule SelectoComponents.ScheduledExports do
   defp local_datetime(date, hour, minute, timezone) do
     naive = NaiveDateTime.new!(date, Time.new!(hour, minute, 0))
 
-    case DateTime.from_naive(naive, timezone) do
+    case DateTime.from_naive(naive, timezone, Tzdata.TimeZoneDatabase) do
       {:ok, value} -> value
       {:ambiguous, first, _second} -> first
       {:gap, _before, after_dt} -> after_dt

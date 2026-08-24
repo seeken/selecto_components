@@ -312,8 +312,10 @@ defmodule SelectoComponents.Presentation do
 
     with storage_timezone when is_binary(storage_timezone) <- storage_timezone,
          viewer_timezone when is_binary(viewer_timezone) <- timezone,
-         {:ok, datetime} <- DateTime.from_naive(naive, storage_timezone),
-         {:ok, shifted} <- DateTime.shift_zone(datetime, viewer_timezone) do
+         {:ok, datetime} <-
+           DateTime.from_naive(naive, storage_timezone, Tzdata.TimeZoneDatabase),
+         {:ok, shifted} <-
+           DateTime.shift_zone(datetime, viewer_timezone, Tzdata.TimeZoneDatabase) do
       shifted
     else
       _ -> naive
@@ -327,7 +329,7 @@ defmodule SelectoComponents.Presentation do
   defp shift_instant_temporal(value, _column, _timezone), do: value
 
   defp maybe_shift_datetime(%DateTime{} = datetime, timezone) when is_binary(timezone) do
-    case DateTime.shift_zone(datetime, timezone) do
+    case DateTime.shift_zone(datetime, timezone, Tzdata.TimeZoneDatabase) do
       {:ok, shifted} -> shifted
       _ -> datetime
     end

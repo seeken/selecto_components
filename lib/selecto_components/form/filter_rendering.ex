@@ -2053,7 +2053,7 @@ defmodule SelectoComponents.Form.FilterRendering do
 
   defp maybe_shift_temporal_display(%DateTime{} = datetime, field_conf, timezone) do
     if Selecto.Presentation.temporal_kind(field_conf) == :instant do
-      case DateTime.shift_zone(datetime, timezone) do
+      case DateTime.shift_zone(datetime, timezone, Tzdata.TimeZoneDatabase) do
         {:ok, shifted} -> shifted
         _ -> datetime
       end

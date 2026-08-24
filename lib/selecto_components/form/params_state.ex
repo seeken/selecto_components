@@ -1239,15 +1239,15 @@ defmodule SelectoComponents.Form.ParamsState do
   defp local_input_to_utc_string(_value, _column, _timezone), do: nil
 
   defp timezone_naive_to_utc_string(naive, timezone) do
-    case DateTime.from_naive(naive, timezone) do
+    case DateTime.from_naive(naive, timezone, Tzdata.TimeZoneDatabase) do
       {:ok, datetime} ->
         datetime
-        |> DateTime.shift_zone!("Etc/UTC")
+        |> DateTime.shift_zone!("Etc/UTC", Tzdata.TimeZoneDatabase)
         |> DateTime.to_iso8601()
 
       {:ambiguous, datetime, _other} ->
         datetime
-        |> DateTime.shift_zone!("Etc/UTC")
+        |> DateTime.shift_zone!("Etc/UTC", Tzdata.TimeZoneDatabase)
         |> DateTime.to_iso8601()
 
       _ ->

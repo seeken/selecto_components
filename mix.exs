@@ -44,13 +44,13 @@ defmodule SelectoComponents.MixProject do
   defp deps do
     [
       {:phoenix, "~> 1.8.0"},
-      {:phoenix_live_view, "~> 1.1.4"},
+      {:phoenix_live_view, "~> 1.1.4 or ~> 1.2.0"},
       # {:phoenix_html_helpers, "~> 1.0"},
       selecto_dep(),
       {:uuid, "~> 1.1"},
       {:ex_doc, "~> 0.29.1", only: :dev, runtime: false},
       # {:vega_lite, "~> 0.1.6"},
-      {:timex, "~> 3.7.9"},
+      {:tzdata, "~> 1.1"},
       {:jason, "~> 1.2"},
       {:esbuild, "~> 0.5", runtime: Mix.env() == :dev},
       {:ecto, ">= 3.9.1 and < 4.0.0"},

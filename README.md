@@ -28,6 +28,7 @@ It is the package you use when you want users to:
 ## Requirements
 
 - Phoenix 1.7+
+- Phoenix LiveView 1.1.4+ or 1.2.x
 - Elixir ~> 1.18
 - `selecto >= 0.5.0 and < 0.6.0`
 - an adapter package such as `selecto_db_postgresql >= 0.5.0 and < 0.6.0`

@@ -32,6 +32,10 @@ V 0.5.0 - Adapter-Neutral Runtime and Query Library Integration
   protected from request-supplied options.
 - Raised the Selecto package baseline to `0.5.0` and added a blocking
   PostgreSQL production-boundary gate.
+- Widened Phoenix LiveView compatibility to include the 1.2 series used by
+  current Phoenix 1.8 applications.
+- Replaced the Timex-only timezone check with `Tzdata.zone_exists?/1`, avoiding
+  Timex's incompatible pre-1.0 Gettext constraint in current Phoenix apps.
 
 V 0.4.13 - Fail-Closed LiveView Query and Action Boundaries
 -----------------------------------------------------------
