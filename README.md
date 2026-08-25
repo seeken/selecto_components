@@ -13,6 +13,18 @@ It is the package you use when you want users to:
 - save/export/share views
 - email or schedule exports through host-app integrations
 
+Published nested Experiences use `SelectoComponents.NestedExperience` to turn
+an immutable consumer projection into one exact collection-editor contract.
+`ActionFormModal` renders one/many child editors with stable temporary and
+authoritative paths, add/edit/remove/restore/reorder/retry states, bounded lazy
+pages, responsive markers, accessible controls, and exact append-only, delta,
+full-set, replace-one, or link-delta normalization. The component never infers
+ownership or omission behavior from submitted values. It preserves ordering,
+validation, Assurance, tenant, conflict, idempotency, and output policies from
+the pinned release. A whole-form **Discard** restores the initial root and
+nested collection together; removing one persisted child remains a distinct,
+reversible mutation intent until collective Apply.
+
 ## What It Includes
 
 - `SelectoComponents.Explorer` as the preferred top-level exploration surface

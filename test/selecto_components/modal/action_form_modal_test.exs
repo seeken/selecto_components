@@ -133,6 +133,7 @@ defmodule SelectoComponents.Modal.ActionFormModalTest do
     assert html =~ ~s(data-selecto-action-form-input="note")
     assert html =~ ~s(data-selecto-action-form-submit="preview")
     assert html =~ ~s(data-selecto-action-form-submit="apply")
+    assert html =~ ~s(data-selecto-action-form-discard)
   end
 
   test "render carries numeric input constraints from action metadata" do
@@ -196,6 +197,37 @@ defmodule SelectoComponents.Modal.ActionFormModalTest do
              "intent" => "apply",
              "payload" => %{"action" => "archive"}
            }
+  end
+
+  test "discard_action_form restores the collective root and nested baseline" do
+    baseline = %{
+      "note" => "Original",
+      "items" => [%{"id" => 42, "quantity" => 2, "op" => "update"}]
+    }
+
+    socket =
+      socket(composition_action(), %{id: 7})
+      |> Phoenix.Component.assign(
+        initial_form_inputs: baseline,
+        form_inputs: %{
+          "note" => "Changed",
+          "items" => [
+            %{"id" => 42, "quantity" => 9, "op" => "delete", "state" => "removed"},
+            %{"client_id" => "new-1", "quantity" => 1, "op" => "create"}
+          ]
+        },
+        nested_pages: %{"items" => 2},
+        confirmed: true,
+        last_error: "stale"
+      )
+
+    assert {:noreply, discarded} =
+             ActionFormModal.handle_event("discard_action_form", %{}, socket)
+
+    assert discarded.assigns.form_inputs == baseline
+    assert discarded.assigns.nested_pages == %{}
+    refute discarded.assigns.confirmed
+    assert discarded.assigns.last_error == nil
   end
 
   test "change_action_form merges partial LiveView input payloads without clearing prior fields" do
@@ -1051,6 +1083,191 @@ defmodule SelectoComponents.Modal.ActionFormModalTest do
     refute_received {:selecto_action_form_submit, _payload}
   end
 
+  test "published composition collection submits the exact declared delta representation" do
+    action = composition_action()
+
+    params = %{
+      "intent" => "preview",
+      "inputs" => %{
+        "items" => %{
+          "0" => %{
+            "op" => "create",
+            "client_id" => "new-1",
+            "sku" => "A",
+            "quantity" => "2"
+          },
+          "1" => %{
+            "op" => "update",
+            "id" => "42",
+            "sku" => "B",
+            "quantity" => "3"
+          }
+        }
+      }
+    }
+
+    assert {:noreply, updated_socket} =
+             ActionFormModal.handle_event(
+               "submit_action_form",
+               params,
+               socket(action, %{id: 7})
+             )
+
+    assert_receive {:selecto_action_form_submit, payload}
+
+    assert %{
+             "mode" => "delta",
+             "create" => [%{"client_id" => "new-1", "sku" => "A", "quantity" => "2"}],
+             "update" => [%{"id" => "42", "sku" => "B", "quantity" => "3"}],
+             "delete" => []
+           } = payload.inputs["items"]
+
+    assert is_list(updated_socket.assigns.form_inputs["items"])
+    assert updated_socket.assigns.last_error == nil
+  end
+
+  test "published composition rows render stable semantic paths" do
+    html =
+      render_component(ActionFormModal, %{
+        id: "edit-order",
+        action: composition_action(),
+        target: %{id: 7},
+        record: %{"id" => 7},
+        form_inputs: %{
+          "items" => [%{"op" => "update", "id" => 42, "sku" => "A", "quantity" => 2}]
+        }
+      })
+
+    assert html =~ ~s(data-selecto-nested-path="orders.items[id=42]")
+    assert html =~ ~s(data-selecto-nested-pagination="lazy")
+    assert html =~ ~s(data-selecto-responsive-variants="phone tablet desktop")
+    assert html =~ ~s(aria-label="Move orders.items[id=42] up")
+    assert html =~ ~s(aria-label="Remove orders.items[id=42]")
+  end
+
+  test "published large collections render accessible lazy pages with global item paths" do
+    items =
+      Enum.map(1..25, fn id ->
+        %{"op" => "update", "id" => id, "sku" => "SKU-#{id}", "quantity" => id}
+      end)
+
+    first_page =
+      render_component(ActionFormModal, %{
+        id: "edit-order",
+        action: composition_action(),
+        target: %{id: 7},
+        record: %{"id" => 7},
+        form_inputs: %{"items" => items}
+      })
+
+    assert length(Regex.scan(~r/data-selecto-action-form-collection-item=/, first_page)) == 20
+    assert first_page =~ ~s(data-selecto-nested-page="1")
+    assert first_page =~ "Page 1 of 2 · 25 items"
+    assert first_page =~ ~s(aria-label="Next Items page")
+
+    second_page =
+      render_component(ActionFormModal, %{
+        id: "edit-order-page-two",
+        action: composition_action(),
+        target: %{id: 7},
+        record: %{"id" => 7},
+        form_inputs: %{"items" => items},
+        nested_pages: %{"items" => 2}
+      })
+
+    assert length(Regex.scan(~r/data-selecto-action-form-collection-item=/, second_page)) == 5
+    assert second_page =~ ~s(data-selecto-action-form-collection-item="20")
+    assert second_page =~ ~s(data-selecto-nested-path="orders.items[id=21]")
+    assert second_page =~ ~s(aria-label="Previous Items page")
+  end
+
+  test "editing a lazy page preserves collection items on other pages" do
+    action = composition_action()
+
+    items =
+      Enum.map(1..25, fn id ->
+        %{"op" => "update", "id" => id, "sku" => "SKU-#{id}", "quantity" => id}
+      end)
+
+    socket =
+      action
+      |> socket(%{id: 7})
+      |> Phoenix.Component.assign(form_inputs: %{"items" => items}, nested_pages: %{"items" => 2})
+
+    assert {:noreply, updated} =
+             ActionFormModal.handle_event(
+               "change_action_form",
+               %{
+                 "_target" => ["inputs", "items", "20", "quantity"],
+                 "inputs" => %{
+                   "items" => %{
+                     "20" => %{
+                       "op" => "update",
+                       "id" => "21",
+                       "sku" => "SKU-21",
+                       "quantity" => "99"
+                     }
+                   }
+                 }
+               },
+               socket
+             )
+
+    assert length(updated.assigns.form_inputs["items"]) == 25
+    assert Enum.at(updated.assigns.form_inputs["items"], 0)["id"] == 1
+    assert Enum.at(updated.assigns.form_inputs["items"], 20)["quantity"] == "99"
+    assert Enum.at(updated.assigns.form_inputs["items"], 24)["id"] == 25
+  end
+
+  test "published composition exposes conflict retry and discard restoration interactions" do
+    action = composition_action()
+
+    socket =
+      action
+      |> socket(%{id: 7})
+      |> Phoenix.Component.assign(
+        form_inputs: %{
+          "items" => [
+            %{
+              "op" => "update",
+              "state" => "conflict",
+              "errors" => %{"quantity" => "stale"},
+              "id" => 42,
+              "sku" => "A",
+              "quantity" => 2
+            }
+          ]
+        }
+      )
+
+    assert {:noreply, socket} =
+             ActionFormModal.handle_event(
+               "retry_action_collection_item",
+               %{"input-id" => "items", "index" => "0"},
+               socket
+             )
+
+    assert get_in(socket.assigns.form_inputs, ["items", Access.at(0), "state"]) == "editable"
+
+    assert {:noreply, socket} =
+             ActionFormModal.handle_event(
+               "remove_action_collection_item",
+               %{"input-id" => "items", "index" => "0"},
+               socket
+             )
+
+    assert get_in(socket.assigns.form_inputs, ["items", Access.at(0), "state"]) == "removed"
+
+    assert {:noreply, socket} =
+             ActionFormModal.handle_event(
+               "restore_action_collection_item",
+               %{"input-id" => "items", "index" => "0"},
+               socket
+             )
+
+    assert get_in(socket.assigns.form_inputs, ["items", Access.at(0), "op"]) == "update"
+  end
+
   defp socket(action, target) do
     %Phoenix.LiveView.Socket{
       assigns: %{
@@ -1129,6 +1346,44 @@ defmodule SelectoComponents.Modal.ActionFormModalTest do
               "required" => true
             }
           ]
+        }
+      ],
+      "confirmation" => %{"required" => false}
+    }
+  end
+
+  defp composition_action do
+    %{
+      "id" => "edit-order",
+      "label" => "Edit order",
+      "scope" => "row",
+      "operation" => "update",
+      "inputs" => [
+        %{
+          "id" => "items",
+          "label" => "Items",
+          "type" => "collection",
+          "required" => true,
+          "min_items" => 1,
+          "item" => [
+            %{"id" => "id", "type" => "hidden"},
+            %{"id" => "sku", "type" => "string", "required" => true},
+            %{"id" => "quantity", "type" => "integer", "required" => true}
+          ],
+          "composition" => %{
+            "path_id" => "orders.items",
+            "ownership" => "composition",
+            "cardinality" => "many",
+            "mutation_mode" => "delta",
+            "allowed_modes" => ["delta", "full_set"],
+            "operations" => ["create", "update", "delete"],
+            "omission" => "retain_missing",
+            "identity_fields" => ["id"],
+            "client_identity" => "client_id",
+            "max_items" => 25,
+            "offline" => %{"eligible" => true},
+            "conflict" => %{"child_fields" => ["lock_version"]}
+          }
         }
       ],
       "confirmation" => %{"required" => false}

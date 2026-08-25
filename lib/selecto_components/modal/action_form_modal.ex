@@ -9,7 +9,7 @@ defmodule SelectoComponents.Modal.ActionFormModal do
   """
 
   use Phoenix.LiveComponent
-  alias SelectoComponents.Actions
+  alias SelectoComponents.{Actions, NestedExperience}
 
   @impl true
   def mount(socket) do
@@ -19,6 +19,9 @@ defmodule SelectoComponents.Modal.ActionFormModal do
        target: %{},
        record: %{},
        form_inputs: %{},
+       initial_form_inputs: %{},
+       initial_form_key: nil,
+       nested_pages: %{},
        confirmed: false,
        submitting: nil,
        last_request: nil,
@@ -29,7 +32,29 @@ defmodule SelectoComponents.Modal.ActionFormModal do
 
   @impl true
   def update(assigns, socket) do
-    {:ok, assign(socket, assigns)}
+    socket = assign(socket, assigns)
+    action = normalize_action(Map.get(socket.assigns, :action, %{}))
+    form_key = {Map.get(action, "id"), normalize_target(socket.assigns)}
+
+    socket =
+      if Map.get(socket.assigns, :initial_form_key) == form_key do
+        socket
+      else
+        baseline = initial_request_inputs(action, Map.get(socket.assigns, :form_inputs, %{}))
+
+        assign(socket,
+          form_inputs: baseline,
+          initial_form_inputs: baseline,
+          initial_form_key: form_key,
+          nested_pages:
+            if(Map.has_key?(assigns, :nested_pages),
+              do: Map.get(assigns, :nested_pages) || %{},
+              else: %{}
+            )
+        )
+      end
+
+    {:ok, socket}
   end
 
   @impl true
@@ -154,6 +179,7 @@ defmodule SelectoComponents.Modal.ActionFormModal do
               :if={collection_input?(input)}
               input={input}
               items={collection_input_items(input, @form_inputs)}
+              page={Map.get(@nested_pages, Map.get(input, "id"), 1)}
               controls_disabled?={@controls_disabled?}
               myself={@myself}
             />
@@ -259,6 +285,17 @@ defmodule SelectoComponents.Modal.ActionFormModal do
 
         <div class="flex justify-end gap-2">
           <button
+            :if={!@applied?}
+            type="button"
+            phx-click="discard_action_form"
+            phx-target={@myself}
+            data-selecto-action-form-discard
+            disabled={@disabled?}
+            class="rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Discard
+          </button>
+          <button
             :if={(@last_result || @last_error) && !@applied?}
             type="button"
             phx-click="reset_action_form"
@@ -295,15 +332,23 @@ defmodule SelectoComponents.Modal.ActionFormModal do
   end
 
   defp collection_input(assigns) do
+    page_data = NestedExperience.collection_page(assigns.input, assigns.items, assigns.page)
+
     assigns =
       assigns
       |> assign(:input_id, Map.get(assigns.input, "id"))
       |> assign(:item_inputs, collection_item_inputs(assigns.input))
       |> assign(:min_items, collection_min_items(assigns.input))
+      |> assign(:page_data, page_data)
+      |> assign(:visible_items, page_data.items)
 
     ~H"""
     <fieldset
       data-selecto-action-form-collection={@input_id}
+      data-selecto-nested-pagination={if collection_lazy?(@input), do: "lazy", else: "bounded"}
+      data-selecto-nested-max-items={get_in(@input, ["composition", "max_items"])}
+      data-selecto-responsive-variants="phone tablet desktop"
+      aria-describedby={"#{@input_id}-nested-help"}
       class="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3"
       disabled={@controls_disabled?}
     >
@@ -313,7 +358,7 @@ defmodule SelectoComponents.Modal.ActionFormModal do
             {Map.get(@input, "label") || humanize(@input_id)}
             <span :if={input_required?(@input)} class="text-rose-600">*</span>
           </legend>
-          <p class="text-xs text-slate-500">
+          <p id={"#{@input_id}-nested-help"} class="text-xs text-slate-500">
             {collection_help_text(@input, @min_items)}
           </p>
         </div>
@@ -334,8 +379,10 @@ defmodule SelectoComponents.Modal.ActionFormModal do
       </p>
 
       <div
-        :for={{item, index} <- Enum.with_index(@items)}
+        :for={{item, index} <- @visible_items}
         data-selecto-action-form-collection-item={index}
+        data-selecto-nested-path={NestedExperience.item_path(@input, item, index)}
+        data-selecto-nested-state={Map.get(item, "state", "editable")}
         class="space-y-3 rounded border border-slate-200 bg-white p-3"
       >
         <input type="hidden" name={collection_item_name(@input_id, index, "op")} value={Map.get(item, "op", "add")} />
@@ -352,7 +399,8 @@ defmodule SelectoComponents.Modal.ActionFormModal do
               phx-value-input-id={@input_id}
               phx-value-index={index}
               phx-value-direction="up"
-              disabled={index == 0}
+              disabled={index == 0 or not NestedExperience.reorder_allowed?(@input)}
+              aria-label={"Move #{NestedExperience.item_path(@input, item, index)} up"}
               class="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-40"
             >
               Up
@@ -364,7 +412,11 @@ defmodule SelectoComponents.Modal.ActionFormModal do
               phx-value-input-id={@input_id}
               phx-value-index={index}
               phx-value-direction="down"
-              disabled={index == length(@items) - 1}
+              disabled={
+                index == @page_data.total_items - 1 or
+                  not NestedExperience.reorder_allowed?(@input)
+              }
+              aria-label={"Move #{NestedExperience.item_path(@input, item, index)} down"}
               class="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-40"
             >
               Down
@@ -375,9 +427,34 @@ defmodule SelectoComponents.Modal.ActionFormModal do
               phx-target={@myself}
               phx-value-input-id={@input_id}
               phx-value-index={index}
+              aria-label={"Remove #{NestedExperience.item_path(@input, item, index)}"}
               class="rounded border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
             >
               Remove
+            </button>
+            <button
+              :if={Map.get(item, "state") == "removed"}
+              type="button"
+              phx-click="restore_action_collection_item"
+              phx-target={@myself}
+              phx-value-input-id={@input_id}
+              phx-value-index={index}
+              aria-label={"Restore #{NestedExperience.item_path(@input, item, index)}"}
+              class="rounded border border-sky-200 px-2 py-1 text-xs text-sky-700 hover:bg-sky-50"
+            >
+              Restore
+            </button>
+            <button
+              :if={Map.get(item, "state") in ~w(conflict rejected failed)}
+              type="button"
+              phx-click="retry_action_collection_item"
+              phx-target={@myself}
+              phx-value-input-id={@input_id}
+              phx-value-index={index}
+              aria-label={"Retry #{NestedExperience.item_path(@input, item, index)}"}
+              class="rounded border border-amber-200 px-2 py-1 text-xs text-amber-700 hover:bg-amber-50"
+            >
+              Retry
             </button>
           </div>
         </div>
@@ -428,6 +505,41 @@ defmodule SelectoComponents.Modal.ActionFormModal do
           />
         </label>
       </div>
+
+      <nav
+        :if={@page_data.total_pages > 1}
+        data-selecto-nested-page={@page_data.page}
+        aria-label={"#{Map.get(@input, "label") || humanize(@input_id)} pages"}
+        class="flex items-center justify-between gap-3 rounded border border-slate-200 bg-white px-3 py-2"
+      >
+        <button
+          type="button"
+          phx-click="page_action_collection_items"
+          phx-target={@myself}
+          phx-value-input-id={@input_id}
+          phx-value-direction="previous"
+          disabled={!@page_data.previous?}
+          aria-label={"Previous #{Map.get(@input, "label") || humanize(@input_id)} page"}
+          class="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-40"
+        >
+          Previous
+        </button>
+        <span aria-live="polite" class="text-xs text-slate-600">
+          Page {@page_data.page} of {@page_data.total_pages} · {@page_data.total_items} items
+        </span>
+        <button
+          type="button"
+          phx-click="page_action_collection_items"
+          phx-target={@myself}
+          phx-value-input-id={@input_id}
+          phx-value-direction="next"
+          disabled={!@page_data.next?}
+          aria-label={"Next #{Map.get(@input, "label") || humanize(@input_id)} page"}
+          class="rounded border border-slate-300 px-2 py-1 text-xs disabled:opacity-40"
+        >
+          Next
+        </button>
+      </nav>
     </fieldset>
     """
   end
@@ -463,7 +575,26 @@ defmodule SelectoComponents.Modal.ActionFormModal do
         %{"input-id" => input_id, "index" => index},
         socket
       ) do
-    {:noreply, update_collection_items(socket, input_id, &List.delete_at(&1, parse_index(index)))}
+    input = collection_input_definition(socket, input_id)
+
+    if input && is_map(input["composition"]) do
+      items = collection_input_items(input, socket.assigns.form_inputs)
+
+      case NestedExperience.remove_item(input, items, parse_index(index)) do
+        {:ok, updated} ->
+          {:noreply,
+           assign(socket,
+             form_inputs: Map.put(socket.assigns.form_inputs, input_id, updated),
+             last_error: nil
+           )}
+
+        {:error, reason} ->
+          {:noreply, assign(socket, last_error: nested_error_message(reason))}
+      end
+    else
+      {:noreply,
+       update_collection_items(socket, input_id, &List.delete_at(&1, parse_index(index)))}
+    end
   end
 
   def handle_event(
@@ -473,9 +604,49 @@ defmodule SelectoComponents.Modal.ActionFormModal do
       ) do
     index = parse_index(index)
     destination = if direction == "up", do: index - 1, else: index + 1
+    input = collection_input_definition(socket, input_id)
+
+    if (input && is_map(input["composition"])) and not NestedExperience.reorder_allowed?(input) do
+      {:noreply, assign(socket, last_error: "Nested reorder is not permitted by this release.")}
+    else
+      {:noreply,
+       update_collection_items(socket, input_id, &move_collection_item(&1, index, destination))}
+    end
+  end
+
+  def handle_event(
+        "page_action_collection_items",
+        %{"input-id" => input_id, "direction" => direction},
+        socket
+      ) do
+    input = collection_input_definition(socket, input_id)
+    items = collection_input_items(input || %{}, socket.assigns.form_inputs)
+    pages = Map.get(socket.assigns, :nested_pages, %{})
+    current = Map.get(pages, input_id, 1)
+    requested = if direction == "previous", do: current - 1, else: current + 1
+    page = NestedExperience.collection_page(input || %{}, items, requested).page
 
     {:noreply,
-     update_collection_items(socket, input_id, &move_collection_item(&1, index, destination))}
+     assign(socket,
+       nested_pages: Map.put(pages, input_id, page),
+       last_error: nil
+     )}
+  end
+
+  def handle_event(
+        "retry_action_collection_item",
+        %{"input-id" => input_id, "index" => index},
+        socket
+      ) do
+    update_nested_item(socket, input_id, index, &NestedExperience.retry_item/3)
+  end
+
+  def handle_event(
+        "restore_action_collection_item",
+        %{"input-id" => input_id, "index" => index},
+        socket
+      ) do
+    update_nested_item(socket, input_id, index, &NestedExperience.restore_item/3)
   end
 
   def handle_event("reset_action_form", _params, socket) do
@@ -484,6 +655,23 @@ defmodule SelectoComponents.Modal.ActionFormModal do
     else
       {:noreply,
        assign(socket,
+         submitting: nil,
+         last_request: nil,
+         last_result: nil,
+         last_error: nil
+       )}
+    end
+  end
+
+  def handle_event("discard_action_form", _params, socket) do
+    if applied_result?(Map.get(socket.assigns, :last_result)) do
+      {:noreply, socket}
+    else
+      {:noreply,
+       assign(socket,
+         form_inputs: Map.get(socket.assigns, :initial_form_inputs, %{}),
+         nested_pages: %{},
+         confirmed: false,
          submitting: nil,
          last_request: nil,
          last_result: nil,
@@ -501,7 +689,7 @@ defmodule SelectoComponents.Modal.ActionFormModal do
     normalized_inputs =
       socket.assigns
       |> Map.get(:form_inputs, %{})
-      |> merge_submit_inputs(Map.get(params, "inputs", %{}))
+      |> merge_submit_inputs(Map.get(params, "inputs", %{}), all_input_defs)
       |> normalize_inputs(all_input_defs)
 
     {input_defs, _active_variant} = Actions.effective_inputs(action, normalized_inputs)
@@ -511,7 +699,27 @@ defmodule SelectoComponents.Modal.ActionFormModal do
 
     case validate_submission(action, intent, confirmed, inputs, input_defs) do
       :ok ->
-        submit_action_request(socket, action, target, intent, inputs, confirmed)
+        case NestedExperience.normalize_inputs(inputs, input_defs) do
+          {:ok, execution_inputs} ->
+            submit_action_request(
+              socket,
+              action,
+              target,
+              intent,
+              execution_inputs,
+              confirmed,
+              inputs
+            )
+
+          {:error, reason} ->
+            {:noreply,
+             assign(socket,
+               form_inputs: inputs,
+               confirmed: confirmed,
+               submitting: nil,
+               last_error: nested_error_message(reason)
+             )}
+        end
 
       {:error, message} ->
         {:noreply,
@@ -536,7 +744,15 @@ defmodule SelectoComponents.Modal.ActionFormModal do
     validate_required_inputs(inputs, input_defs)
   end
 
-  defp submit_action_request(socket, action, target, intent, inputs, confirmed) do
+  defp submit_action_request(
+         socket,
+         action,
+         target,
+         intent,
+         inputs,
+         confirmed,
+         form_inputs
+       ) do
     request =
       Actions.request_template(action,
         target: target,
@@ -551,7 +767,7 @@ defmodule SelectoComponents.Modal.ActionFormModal do
 
     {:noreply,
      assign(socket,
-       form_inputs: inputs,
+       form_inputs: form_inputs || inputs,
        confirmed: confirmed,
        submitting: intent,
        last_request: request,
@@ -678,6 +894,15 @@ defmodule SelectoComponents.Modal.ActionFormModal do
     |> Map.get("inputs", %{})
   end
 
+  defp initial_request_inputs(action, form_inputs) do
+    base = merge_default_inputs(map_or_empty(form_inputs), action)
+    {inputs, _variant} = Actions.effective_inputs(action, base)
+
+    base
+    |> merge_input_defaults(inputs)
+    |> normalize_inputs(inputs)
+  end
+
   defp normalize_inputs(inputs, input_defs) when is_map(inputs) do
     input_defs = List.wrap(input_defs)
 
@@ -698,6 +923,8 @@ defmodule SelectoComponents.Modal.ActionFormModal do
   defp normalize_inputs(_inputs, _input_defs), do: %{}
 
   defp merge_changed_inputs(existing_inputs, changed_inputs, input_defs, target_path) do
+    existing_inputs = map_or_empty(existing_inputs)
+
     changed_inputs =
       changed_inputs
       |> Map.new()
@@ -705,9 +932,7 @@ defmodule SelectoComponents.Modal.ActionFormModal do
       |> reject_empty_non_target_inputs(existing_inputs, target_path)
       |> maybe_put_unchecked_boolean(input_defs, target_path)
 
-    existing_inputs
-    |> map_or_empty()
-    |> Map.merge(changed_inputs)
+    merge_partial_inputs(existing_inputs, changed_inputs, input_defs)
   end
 
   defp reject_unused_inputs(inputs) do
@@ -739,7 +964,7 @@ defmodule SelectoComponents.Modal.ActionFormModal do
 
   defp maybe_put_unchecked_boolean(inputs, _input_defs, _target_path), do: inputs
 
-  defp merge_submit_inputs(existing_inputs, submitted_inputs) do
+  defp merge_submit_inputs(existing_inputs, submitted_inputs, input_defs) do
     existing_inputs = map_or_empty(existing_inputs)
 
     submitted_inputs =
@@ -751,7 +976,39 @@ defmodule SelectoComponents.Modal.ActionFormModal do
       end)
       |> Map.new()
 
-    Map.merge(existing_inputs, submitted_inputs)
+    merge_partial_inputs(existing_inputs, submitted_inputs, input_defs)
+  end
+
+  defp merge_partial_inputs(existing_inputs, changed_inputs, input_defs) do
+    Enum.reduce(changed_inputs, existing_inputs, fn {id, value}, merged ->
+      input = Enum.find(List.wrap(input_defs), &(Map.get(&1, "id") == id))
+
+      merged_value =
+        if collection_input?(input || %{}) and is_map(value) do
+          merge_collection_page(Map.get(merged, id), value, input)
+        else
+          value
+        end
+
+      Map.put(merged, id, merged_value)
+    end)
+  end
+
+  defp merge_collection_page(existing, submitted, input) do
+    existing = normalize_collection_items(existing, input)
+
+    submitted
+    |> Enum.reject(fn {key, _value} -> String.starts_with?(to_string(key), "_unused_") end)
+    |> Enum.sort_by(fn {key, _value} -> parse_index(key) end)
+    |> Enum.reduce(existing, fn {index, item}, items ->
+      index = parse_index(index)
+
+      case normalize_collection_items(%{"0" => item}, input) do
+        [normalized] when index < length(items) -> List.replace_at(items, index, normalized)
+        [normalized] when index == length(items) -> items ++ [normalized]
+        _other -> items
+      end
+    end)
   end
 
   defp boolean_input?(input_defs, input_id) do
@@ -803,8 +1060,23 @@ defmodule SelectoComponents.Modal.ActionFormModal do
       end
   end
 
+  defp collection_lazy?(input) do
+    case get_in(input, ["composition", "pagination", "strategy"]) do
+      "lazy" ->
+        true
+
+      "bounded" ->
+        false
+
+      _legacy ->
+        maximum = get_in(input, ["composition", "max_items"]) || Map.get(input, "max_items")
+        is_integer(maximum) and maximum > 20
+    end
+  end
+
   defp collection_order_field(input) do
-    get_in(input, ["order", "field"]) || get_in(input, ["raw", "order", "field"]) ||
+    get_in(input, ["composition", "ordering", "field"]) ||
+      get_in(input, ["order", "field"]) || get_in(input, ["raw", "order", "field"]) ||
       "position"
   end
 
@@ -830,10 +1102,7 @@ defmodule SelectoComponents.Modal.ActionFormModal do
   end
 
   defp update_collection_items(socket, input_id, update_fun) do
-    input =
-      socket
-      |> all_action_input_defs()
-      |> Enum.find(&(Map.get(&1, "id") == input_id and collection_input?(&1)))
+    input = collection_input_definition(socket, input_id)
 
     if input do
       form_inputs = Map.get(socket.assigns, :form_inputs, %{}) |> map_or_empty()
@@ -848,11 +1117,30 @@ defmodule SelectoComponents.Modal.ActionFormModal do
     end
   end
 
+  defp update_nested_item(socket, input_id, index, update_fun) do
+    input = collection_input_definition(socket, input_id)
+    form_inputs = Map.get(socket.assigns, :form_inputs, %{}) |> map_or_empty()
+    items = form_inputs |> Map.get(input_id, []) |> normalize_collection_items(input || %{})
+
+    if input && is_map(input["composition"]) do
+      case update_fun.(input, items, parse_index(index)) do
+        {:ok, updated} ->
+          {:noreply,
+           assign(socket,
+             form_inputs: Map.put(form_inputs, input_id, updated),
+             last_error: nil
+           )}
+
+        {:error, reason} ->
+          {:noreply, assign(socket, last_error: nested_error_message(reason))}
+      end
+    else
+      {:noreply, assign(socket, last_error: "Nested collection is unavailable.")}
+    end
+  end
+
   defp new_collection_item(socket, input_id) do
-    input =
-      socket
-      |> all_action_input_defs()
-      |> Enum.find(&(Map.get(&1, "id") == input_id and collection_input?(&1)))
+    input = collection_input_definition(socket, input_id)
 
     defaults =
       input
@@ -879,8 +1167,20 @@ defmodule SelectoComponents.Modal.ActionFormModal do
       end)
 
     defaults
-    |> Map.put("op", "add")
+    |> Map.put(
+      "op",
+      if(is_map(input["composition"]),
+        do: NestedExperience.new_item_operation(input),
+        else: "add"
+      )
+    )
     |> Map.put("client_id", "selecto-item-#{System.unique_integer([:positive, :monotonic])}")
+  end
+
+  defp collection_input_definition(socket, input_id) do
+    socket
+    |> all_action_input_defs()
+    |> Enum.find(&(Map.get(&1, "id") == input_id and collection_input?(&1)))
   end
 
   defp move_collection_item(items, from, destination)
@@ -1158,15 +1458,19 @@ defmodule SelectoComponents.Modal.ActionFormModal do
       items
       |> Enum.with_index(1)
       |> Enum.flat_map(fn {item, index} ->
-        input
-        |> collection_item_inputs()
-        |> Enum.filter(&input_required?/1)
-        |> Enum.filter(fn item_input ->
-          item |> Map.get(Map.get(item_input, "id")) |> blank_input_value?()
-        end)
-        |> Enum.map(fn item_input ->
-          "#{input_label(input)} item #{index} #{input_label(item_input)}"
-        end)
+        if Map.get(item, "op") in ~w(delete remove unlink) do
+          []
+        else
+          input
+          |> collection_item_inputs()
+          |> Enum.filter(&input_required?/1)
+          |> Enum.filter(fn item_input ->
+            item |> Map.get(Map.get(item_input, "id")) |> blank_input_value?()
+          end)
+          |> Enum.map(fn item_input ->
+            "#{input_label(input)} item #{index} #{input_label(item_input)}"
+          end)
+        end
       end)
 
     minimum_error ++ item_errors
@@ -1181,6 +1485,22 @@ defmodule SelectoComponents.Modal.ActionFormModal do
   defp blank_input_value?(_value), do: false
 
   defp input_label(input), do: Map.get(input, "label") || humanize(Map.get(input, "id"))
+
+  defp nested_error_message({_input_id, reason}), do: nested_error_message(reason)
+
+  defp nested_error_message(:append_only_item_cannot_be_removed),
+    do: "This append-only collection does not permit removing a persisted item."
+
+  defp nested_error_message(:nested_remove_not_permitted),
+    do: "Nested remove is not permitted by this release."
+
+  defp nested_error_message({:undeclared_mutation_mode, mode, _allowed}),
+    do: "Nested mutation mode #{mode} is not declared by this release."
+
+  defp nested_error_message({:invalid_item_operations, mode, operations}),
+    do: "Nested #{mode} input contains unsupported operations: #{Enum.join(operations, ", ")}."
+
+  defp nested_error_message(reason), do: "Nested input is invalid: #{inspect(reason)}."
 
   defp humanize(nil), do: "Input"
 
