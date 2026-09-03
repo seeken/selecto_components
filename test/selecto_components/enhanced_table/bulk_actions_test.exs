@@ -147,6 +147,51 @@ defmodule SelectoComponents.EnhancedTable.BulkActionsTest do
     refute html =~ ~s(data-bulk-action-id="legacy_archive")
   end
 
+  test "generated bulk forms exclude ineligible and missing rows from their target" do
+    contract =
+      put_in(bulk_contract(), [:actions, :bulk_archive, :selection], %{
+        eligibility_field: :eligible
+      })
+
+    {:ok, socket} = BulkActions.mount(%Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}})
+
+    {:ok, socket} =
+      BulkActions.update(
+        %{
+          id: "eligible-bulk-actions",
+          action_contract: contract,
+          selected_rows: MapSet.new(["42", "43", "44"]),
+          selection_count: 3,
+          selection_records: %{
+            "42" => %{field_values: %{eligible: true}},
+            "43" => %{field_values: %{eligible: false}}
+          }
+        },
+        socket
+      )
+
+    assert get_in(hd(socket.assigns.actions), [:payload, :assigns, :action, :selection]) ==
+             %{"eligibility_field" => "eligible"}
+
+    assert SelectoComponents.Actions.eligible_selected_ids(
+             get_in(hd(socket.assigns.actions), [:payload, :assigns, :action]),
+             ["42", "43", "44"],
+             socket.assigns.selection_records
+           ) == ["42"]
+
+    assert {:noreply, _} =
+             BulkActions.handle_event(
+               "execute_action",
+               %{
+                 "action" => "domain_bulk_action_form_bulk_archive"
+               },
+               socket
+             )
+
+    assert_receive {:show_detail_modal, detail_data}
+    assert detail_data.component_assigns.target.ids == ["42"]
+  end
+
   defp bulk_contract do
     %{
       actions: %{

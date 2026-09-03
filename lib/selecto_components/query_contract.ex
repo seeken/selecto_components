@@ -390,6 +390,7 @@ defmodule SelectoComponents.QueryContract do
         capability: map_value(action, :capability),
         inputs: map_value(action, :inputs, []),
         preconditions: map_value(action, :preconditions, []),
+        selection: map_value(action, :selection),
         preview_required: map_value(action, :preview_required, true),
         ai_executable: map_value(action, :ai_executable, false),
         allowed_ai_operations:

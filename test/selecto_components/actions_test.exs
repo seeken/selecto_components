@@ -3,6 +3,22 @@ defmodule SelectoComponents.ActionsTest do
 
   alias SelectoComponents.Actions
 
+  test "SQL-backed eligibility accepts row contexts and fails closed for missing values" do
+    action = %{selection: %{eligibility_field: :eligible}}
+    assert Actions.selection_fields(%{actions: %{approve: action}}) == ["eligible"]
+    assert Actions.row_eligible?(action, %{eligible: true})
+    assert Actions.row_eligible?(action, %{field_values: %{"eligible" => 1}})
+    refute Actions.row_eligible?(action, %{field_values: %{"eligible" => false}})
+    refute Actions.row_eligible?(action, %{})
+    refute Actions.row_eligible?(action, nil)
+    assert Actions.row_eligible?(%{}, nil)
+
+    assert Actions.eligible_selected_ids(action, ["42", "43", "44"], %{
+             "42" => %{field_values: %{eligible: true}},
+             "43" => %{field_values: %{eligible: false}}
+           }) == ["42"]
+  end
+
   defmodule ModuleResolver do
     @behaviour Selecto.Capabilities.Resolver
 

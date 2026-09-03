@@ -76,6 +76,30 @@ defmodule SelectoComponents.Views.Detail.ProcessTest do
     assert view_set.order_by == [{:desc, "id"}]
   end
 
+  test "bulk action eligibility is selected even without a row-click action" do
+    domain =
+      selecto().domain
+      |> update_in([:source, :fields], &(&1 ++ [:eligible]))
+      |> put_in([:source, :columns, :eligible], %{type: :boolean, internal: true})
+      |> Map.put(:actions, %{archive: %{scope: :bulk, selection: %{eligibility_field: :eligible}}})
+
+    query = Selecto.configure(domain, nil)
+
+    params = %{
+      "selected" => %{
+        "k0" => %{"field" => "id", "index" => "0", "uuid" => "id-col", "alias" => ""}
+      }
+    }
+
+    {view_set, _} = Process.view(%{}, params, Selecto.columns(query), [], query)
+    assert Enum.map(view_set.columns, & &1["field"]) == ["id"]
+
+    assert Enum.any?(
+             view_set.row_action_query_columns,
+             &(&1["field"] == "eligible" && &1["hidden"])
+           )
+  end
+
   test "unknown sort fields are excluded from the generated query set" do
     params = %{
       "selected" => %{

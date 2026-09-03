@@ -258,9 +258,12 @@ defmodule SelectoComponents.EnhancedTable.RowSelection do
   Selection checkbox component for table rows.
   """
   def row_checkbox(assigns) do
+    assigns = assign_new(assigns, :eligible, fn -> true end)
+
     ~H"""
     <td class="w-12 px-3 py-2">
       <input
+        :if={@eligible}
         type="checkbox"
         class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
         checked={MapSet.member?(@selected_rows, @row_id)}

@@ -55,6 +55,9 @@ defmodule SelectoComponents.Views.Detail.Process do
       |> append_required_row_action_fields(
         RowActions.additional_required_fields(row_action, detail_columns)
       )
+      |> append_required_row_action_fields(
+        SelectoComponents.Actions.selection_fields(Selecto.domain(selecto))
+      )
 
     # Check if denormalization prevention is enabled (checkbox sends "on" when checked)
     prevent_denorm = prevent_denormalization_enabled?(params)

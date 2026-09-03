@@ -140,6 +140,55 @@ defmodule SelectoComponents.Views.Detail.ComponentTest do
     refute html =~ ~s(id="detail-bulk-actions-detail-component-test")
   end
 
+  for scope <- [:bulk, :row] do
+    @eligibility_scope scope
+    test "SQL-backed hidden eligibility omits ineligible row checkboxes for #{scope} actions" do
+      base = selecto_with_bulk_action()
+
+      domain =
+        base.domain
+        |> update_in([:source, :fields], &(&1 ++ [:eligible]))
+        |> put_in([:source, :columns, :eligible], %{type: :boolean, internal: true})
+        |> put_in([:actions, :archive_selected, :selection], %{eligibility_field: :eligible})
+        |> put_in([:actions, :archive_selected, :scope], @eligibility_scope)
+        |> put_in([:actions, :archive_selected, :bulk], true)
+
+      query_columns =
+        base.set.columns ++
+          [
+            %{
+              "field" => "eligible",
+              "alias" => "eligible",
+              "uuid" => "eligible-col",
+              "hidden" => true
+            }
+          ]
+
+      selecto =
+        Selecto.configure(domain, nil)
+        |> Map.put(:set, Map.put(base.set, :row_action_query_columns, query_columns))
+
+      html =
+        render_component(Component, %{
+          id: "detail-eligibility",
+          executed: true,
+          execution_error: nil,
+          selecto: selecto,
+          query_results:
+            {[[42, "Eligible", true], [43, "Ineligible", false]], ["id", "title", "eligible"],
+             ["id", "title", "eligible"]},
+          view_meta: %{page: 0, per_page: 10, total_rows: 2, subselect_configs: []}
+        })
+
+      assert html =~ ~s(id="row-checkbox-42")
+      refute html =~ ~s(id="row-checkbox-43")
+
+      refute Enum.any?(SelectoComponents.Form.ColumnCatalog.picker_columns(selecto), fn {id, _, _} ->
+               id == "eligible"
+             end)
+    end
+  end
+
   test "detail selection events update selected row ids" do
     socket =
       Phoenix.Component.assign(
@@ -156,6 +205,11 @@ defmodule SelectoComponents.Views.Detail.ComponentTest do
 
     assert socket.assigns.selection_count == 1
     assert MapSet.member?(socket.assigns.selected_rows, "42")
+
+    assert {:noreply, socket} =
+             Component.handle_event("toggle_row_selection", %{"id" => "999"}, socket)
+
+    refute MapSet.member?(socket.assigns.selected_rows, "999")
 
     assert {:noreply, socket} = Component.handle_event("toggle_select_all", %{}, socket)
     assert socket.assigns.selection_count == 2

@@ -167,21 +167,38 @@ defmodule SelectoComponents.Views.Detail.Component do
         Map.get(assigns.selecto.set, :columns, [])
       )
 
-    visible_row_ids =
+    selection_records =
       normalized_results
       |> Enum.with_index(row_offset)
       |> Enum.map(fn {row, absolute_idx} ->
         row_values = normalize_row_values(row, columns_from_query, aliases_from_query)
 
-        row
-        |> build_row_action_context(
-          row_values,
-          row_action_query_columns,
-          columns_from_query,
-          aliases_from_query
-        )
-        |> row_selection_id(absolute_idx)
+        record =
+          build_row_action_context(
+            row,
+            row_values,
+            row_action_query_columns,
+            columns_from_query,
+            aliases_from_query
+          )
+
+        {row_selection_id(record, absolute_idx), record}
       end)
+
+    bulk_action_items =
+      assigns
+      |> bulk_action_contract()
+      |> Actions.bulk_actions()
+      |> Map.values()
+      |> Enum.map(&get_in(&1, [:payload, :assigns, :action]))
+
+    visible_row_ids =
+      selection_records
+      |> Enum.filter(fn {_id, record} ->
+        bulk_action_items == [] or
+          Enum.any?(bulk_action_items, &Actions.row_eligible?(&1, record))
+      end)
+      |> Enum.map(&elem(&1, 0))
 
     visible_row_id_set = MapSet.new(visible_row_ids)
 
@@ -211,6 +228,8 @@ defmodule SelectoComponents.Views.Detail.Component do
         query_columns: columns_from_query,
         query_aliases: aliases_from_query,
         visible_row_ids: visible_row_ids,
+        selection_records:
+          Map.new(selection_records, fn {id, record} -> {to_string(id), record} end),
         selected_rows: selected_rows,
         selection_count: selection_count,
         bulk_actions_enabled: bulk_actions_enabled,
@@ -377,6 +396,7 @@ defmodule SelectoComponents.Views.Detail.Component do
         selection_target={@myself}
         total_rows={length(@visible_row_ids)}
         all_row_ids={@visible_row_ids}
+        selection_records={@selection_records}
         row_action_availability_opts={assigns[:row_action_availability_opts] || []}
       />
 
@@ -504,6 +524,7 @@ defmodule SelectoComponents.Views.Detail.Component do
                     target={@myself}
                     row_id={row_selection_id}
                     selected_rows={@selected_rows}
+                    eligible={row_selection_id in @visible_row_ids}
                   />
                 <% end %>
                 <td
@@ -659,7 +680,11 @@ defmodule SelectoComponents.Views.Detail.Component do
   end
 
   def handle_event("toggle_row_selection", %{"id" => row_id}, socket) do
-    {:noreply, RowSelection.toggle_row_selection(socket, row_id)}
+    if Enum.any?(Map.get(socket.assigns, :visible_row_ids, []), &(to_string(&1) == row_id)) do
+      {:noreply, RowSelection.toggle_row_selection(socket, row_id)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("toggle_select_all", _params, socket) do

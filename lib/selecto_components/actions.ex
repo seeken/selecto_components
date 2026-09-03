@@ -62,6 +62,47 @@ defmodule SelectoComponents.Actions do
     |> Enum.filter(fn item -> is_nil(scope) or item.scope == scope end)
   end
 
+  @doc "Governed eligibility fields that must be selected as hidden row data."
+  def selection_fields(contract) do
+    contract
+    |> action_entries()
+    |> Enum.map(&eligibility_field/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+  end
+
+  @doc "Presentation eligibility from SQL-backed row data; mutation authorization remains host-owned."
+  def row_eligible?(action, row) when is_map(row) do
+    case eligibility_field(action) do
+      nil ->
+        true
+
+      field ->
+        values = map_value(row, :field_values, row)
+
+        is_map(values) and
+          Enum.any?(values, fn {key, value} ->
+            to_string(key) == field and value in [true, 1, "1", "true", "t"]
+          end)
+    end
+  end
+
+  def row_eligible?(action, _row), do: is_nil(eligibility_field(action))
+
+  @doc "Filters selected IDs for one action without per-row resolver calls."
+  def eligible_selected_ids(action, ids, records) when is_list(ids) and is_map(records) do
+    Enum.filter(ids, fn id -> row_eligible?(action, Map.get(records, to_string(id))) end)
+  end
+
+  defp eligibility_field(action) do
+    action = map_value(action, :contract) || action
+
+    action
+    |> map_value(:selection, %{})
+    |> map_value(:eligibility_field)
+    |> normalize_optional_id()
+  end
+
   @doc """
   Merges a new preview/apply capability decision into an existing decision map.
   """
@@ -483,6 +524,7 @@ defmodule SelectoComponents.Actions do
       input_template: action_input_template(action),
       required_inputs: action_required_inputs(action),
       variants: action_variants(action),
+      selection: map_value(action, :selection, %{}),
       reason: map_value(decision, :reason),
       links: action_links(action),
       endpoints: action_endpoints(action),

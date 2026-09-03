@@ -199,7 +199,14 @@ defmodule SelectoComponents.EnhancedTable.BulkActions do
   end
 
   defp open_generated_action_form(socket, action) do
-    selected_ids = RowSelection.get_selected_ids(socket)
+    action_contract = get_in(action, [:payload, :assigns, :action]) || %{}
+
+    selected_ids =
+      Actions.eligible_selected_ids(
+        action_contract,
+        RowSelection.get_selected_ids(socket),
+        Map.get(socket.assigns, :selection_records, %{})
+      )
 
     if selected_ids == [] do
       socket
@@ -208,6 +215,10 @@ defmodule SelectoComponents.EnhancedTable.BulkActions do
       component_assigns_template = Map.get(payload, :assigns, %{})
       selection_context = %{"ids" => selected_ids, "count" => length(selected_ids)}
       component_assigns = resolve_selection_assigns(component_assigns_template, selection_context)
+
+      # Availability resolution may have materialized the target before row
+      # eligibility was applied. Always pass the filtered IDs to the form.
+      component_assigns = put_in(component_assigns, [:target, :ids], selected_ids)
 
       send(
         self(),
@@ -253,11 +264,13 @@ defmodule SelectoComponents.EnhancedTable.BulkActions do
     Map.get(selection_context, to_string(key))
   end
 
-  defp resolve_selection_value(%{selection: key}, selection_context) do
+  defp resolve_selection_value(%{selection: key} = value, selection_context)
+       when map_size(value) == 1 and (is_atom(key) or is_binary(key)) do
     resolve_selection_value({:selection, key}, selection_context)
   end
 
-  defp resolve_selection_value(%{"selection" => key}, selection_context) do
+  defp resolve_selection_value(%{"selection" => key} = value, selection_context)
+       when map_size(value) == 1 and (is_atom(key) or is_binary(key)) do
     resolve_selection_value({:selection, key}, selection_context)
   end
 

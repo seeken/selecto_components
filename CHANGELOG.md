@@ -2,6 +2,13 @@
 CHANGES
 =======
 
+Unreleased
+----------
+
+- Added hidden selection-eligibility fields, per-action selected-ID filtering,
+  and rejection of ineligible or non-visible row selection. Mutation guards
+  remain mandatory; grouped/co-domain action input controls are not yet ported.
+
 V 0.5.0 - Adapter-Neutral Runtime and Query Library Integration
 ----------------------------------------------------------------
 

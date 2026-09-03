@@ -39,6 +39,28 @@ reversible mutation intent until collective Apply.
 
 ## Requirements
 
+### Unreleased selection eligibility
+
+The source implementation supports an action's
+`selection: %{eligibility_field: :eligible}` boolean root field. Detail results
+preselect this as hidden row data, omit selection controls for ineligible rows,
+and filter selected IDs separately for each action. Missing eligibility fails
+closed; `internal: true` is a picker/display hint, not a secrecy boundary.
+
+This is presentation only: the host must still atomically enforce mandatory
+action preconditions, trusted tenant scope, capability policy, and cardinality.
+The upstream Perl grouped/co-domain input controls are not yet implemented here.
+Use local sibling sources to try this port; the package versions below do not
+promise it. See `selecto/docs/governed-lookups.md` in the sibling core repository
+for declarations and the lookup-execution boundary.
+
+Executable coverage is in [action helpers](test/selecto_components/actions_test.exs),
+[detail processing](test/selecto_components/views/detail/process_test.exs),
+[detail rendering](test/selecto_components/views/detail/component_test.exs), and
+[bulk actions](test/selecto_components/enhanced_table/bulk_actions_test.exs).
+
+### Published package requirements
+
 - Phoenix 1.7+
 - Phoenix LiveView 1.1.4+ or 1.2.x
 - Elixir ~> 1.18

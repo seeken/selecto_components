@@ -27,7 +27,8 @@ defmodule SelectoComponents.Form.ColumnCatalog do
     |> picker_selecto()
     |> Selecto.columns()
     |> Enum.filter(fn {colid, column} ->
-      column_allows? = Map.get(column, :selectable, true)
+      column_allows? =
+        Map.get(column, :selectable, true) and Map.get(column, :internal, false) != true
 
       surface_allows? =
         query_surfaces
