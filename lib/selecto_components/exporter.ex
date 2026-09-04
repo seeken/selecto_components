@@ -19,7 +19,9 @@ defmodule SelectoComponents.Exporter do
   def build(format, {_rows, _columns, _aliases} = query_results, opts) do
     format = normalize_format(format)
 
-    with {:ok, dataset} <- Dataset.from_query_results(query_results, opts) do
+    with :ok <- validate_materialized_size(query_results, opts),
+         {:ok, dataset} <- Dataset.from_query_results(query_results, opts),
+         :ok <- validate_dataset_size(dataset, opts) do
       case format do
         "json" -> build_json(dataset, opts)
         "csv" -> build_csv(dataset, opts)
@@ -31,6 +33,26 @@ defmodule SelectoComponents.Exporter do
   end
 
   def build(_format, _query_results, _opts), do: {:error, :no_results}
+
+  defp validate_materialized_size({rows, _, _}, opts) when is_list(rows) do
+    limit =
+      SelectoComponents.Views.Aggregate.GridSafety.limit(Keyword.get(opts, :max_export_rows))
+
+    if length(rows) <= limit, do: :ok, else: {:error, :export_limit_exceeded}
+  end
+
+  defp validate_materialized_size(_, _), do: {:error, :no_results}
+
+  defp validate_dataset_size(dataset, opts) do
+    maximum =
+      SelectoComponents.Views.Aggregate.GridSafety.limit(
+        Keyword.get(opts, :max_export_cells, 100_000)
+      )
+
+    if length(dataset.rows) * length(dataset.headers) <= maximum,
+      do: :ok,
+      else: {:error, :export_limit_exceeded}
+  end
 
   defp build_json(dataset, opts) do
     exported_at = exported_at(opts)
@@ -78,7 +100,8 @@ defmodule SelectoComponents.Exporter do
     view_mode = normalize_view_mode(Keyword.get(opts, :view_mode, "results"))
     filename = "selecto_#{view_mode}_#{filename_timestamp(exported_at)}.xlsx"
 
-    with {:ok, content} <- build_xlsx_binary(dataset, view_mode, exported_at) do
+    with :ok <- validate_worksheet(dataset),
+         {:ok, content} <- build_xlsx_binary(dataset, view_mode, exported_at) do
       {:ok,
        %{
          filename: filename,
@@ -88,6 +111,18 @@ defmodule SelectoComponents.Exporter do
          browser_content_encoding: "base64"
        }}
     end
+  end
+
+  defp validate_worksheet(dataset) do
+    oversized_text? = fn value ->
+      value |> Dataset.value_to_string() |> String.length() > 32_767
+    end
+
+    if length(dataset.headers) > 16_384 or length(dataset.rows) >= 1_048_576 or
+         Enum.any?(dataset.headers, oversized_text?) or
+         Enum.any?(dataset.rows, fn row ->
+           Enum.any?(row_values(dataset, row), oversized_text?)
+         end), do: {:error, :export_limit_exceeded}, else: :ok
   end
 
   defp build_delimited_export(dataset, opts, delimiter, extension, mime_type) do
@@ -188,6 +223,9 @@ defmodule SelectoComponents.Exporter do
   end
 
   defp xlsx_cell_xml(ref, nil), do: "<c r=\"#{ref}\" t=\"inlineStr\"><is><t></t></is></c>"
+
+  defp xlsx_cell_xml(ref, value) when is_integer(value) and abs(value) > 999_999_999_999_999,
+    do: xlsx_cell_xml(ref, Integer.to_string(value))
 
   defp xlsx_cell_xml(ref, value) when is_integer(value) or is_float(value) do
     "<c r=\"#{ref}\"><v>#{value}</v></c>"

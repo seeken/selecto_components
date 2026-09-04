@@ -8,6 +8,7 @@ defmodule SelectoComponents.Execution.QueryHelpers do
   alias SelectoComponents.DBSupport
   alias SelectoComponents.QueryResults
   alias SelectoComponents.Views.Aggregate.Options, as: AggregateOptions
+  alias SelectoComponents.Views.Aggregate.GridSafety
   alias SelectoComponents.Views.Detail.Options, as: DetailOptions
   alias SelectoComponents.Views.Detail.QueryPagination
 
@@ -38,7 +39,7 @@ defmodule SelectoComponents.Execution.QueryHelpers do
   end
 
   def maybe_cap_aggregate_rows(rows, view_meta, params) when is_list(rows) do
-    if AggregateOptions.aggregate_view_mode?(params) do
+    if AggregateOptions.aggregate_view_mode?(params) and not aggregate_grid_enabled?(params) do
       total_rows = length(rows)
 
       configured_limit =
@@ -70,7 +71,11 @@ defmodule SelectoComponents.Execution.QueryHelpers do
            })}
       end
     else
-      {rows, view_meta}
+      {rows,
+       Map.merge(view_meta, %{
+         aggregate_rows_capped?: false,
+         aggregate_total_rows_before_cap: length(rows)
+       })}
     end
   end
 
@@ -109,7 +114,33 @@ defmodule SelectoComponents.Execution.QueryHelpers do
         |> Map.put(:aggregate_server_paged?, false)
         |> Map.put(:aggregate_page, 0)
 
-      {execute_query_with_metadata(base_selecto), updated_view_meta, nil}
+      result =
+        if aggregate_grid_enabled?(params) do
+          maximum = GridSafety.configured_limit(Map.get(view_meta, :max_grid_result_cells))
+          bounded = Selecto.limit(base_selecto, maximum + 1)
+
+          case execute_query_with_metadata(bounded) do
+            {:ok, {rows, _columns, _aliases}, _metadata} = result ->
+              case GridSafety.validate_rows(rows, maximum) do
+                :ok ->
+                  result
+
+                {:error, _} ->
+                  {:error,
+                   Selecto.Error.validation_error(
+                     "Aggregate grid is too large. Add filters or choose lower-cardinality groups.",
+                     %{code: :grid_limit_exceeded, max_grid_result_cells: maximum}
+                   )}
+              end
+
+            result ->
+              result
+          end
+        else
+          execute_query_with_metadata(base_selecto)
+        end
+
+      {result, updated_view_meta, nil}
     else
       per_page = AggregateOptions.per_page_to_int(per_page_setting, 0)
 

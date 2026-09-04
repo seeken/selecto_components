@@ -139,7 +139,7 @@ defmodule SelectoComponents.Form.ColumnCatalog do
   defp base_selecto(%Selecto{} = selecto) do
     Selecto.configure(
       selecto.domain,
-      selecto.connection,
+      selecto.runtime || Selecto.Runtime.Context.new(selecto.adapter, selecto.connection),
       adapter: selecto.adapter,
       validate: false
     )

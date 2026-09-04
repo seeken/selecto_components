@@ -113,6 +113,73 @@ defmodule SelectoComponents.ExporterTest do
     assert [%{"title" => "Film A", "release_year" => 1901} | _] = decoded["rows"]
   end
 
+  test "rejects dense grid expansion and oversized materialized exports" do
+    view_config = %{views: %{aggregate: %{grid: true, group_by: ["a", "b"], aggregate: ["n"]}}}
+    rows = Enum.map(1..11, &[&1, &1, 1])
+
+    assert {:error, :export_limit_exceeded} =
+             Exporter.build("csv", {rows, ["a", "b", "n"], []},
+               view_mode: "aggregate",
+               view_config: view_config,
+               max_export_cells: 100
+             )
+
+    assert {:error, :export_limit_exceeded} =
+             Exporter.build("json", {List.duplicate([1], 101), ["a"], []}, max_export_rows: 100)
+  end
+
+  test "plain grids keep null groups distinct from literal sentinel text" do
+    config = %{views: %{aggregate: %{grid: true, group_by: ["a", "b"], aggregate: ["n"]}}}
+    selecto = %Selecto{set: %{group_by: ["a", "b"]}}
+    rows = [[nil, "open", 1], ["[NULL]", "open", 2], ["__NULL__", "open", 3]]
+
+    assert {:ok, export} =
+             Exporter.build("json", {rows, ["a", "b", "n"], []},
+               view_mode: "aggregate",
+               view_config: config,
+               selecto: selecto
+             )
+
+    assert Jason.decode!(export.content)["rows"] == [
+             %{"a" => nil, "open" => 1},
+             %{"a" => "[NULL]", "open" => 2},
+             %{"a" => "__NULL__", "open" => 3}
+           ]
+  end
+
+  test "exports preserve big integers and reject oversized Excel cells" do
+    assert {:ok, json} = Exporter.build("json", {[[9_007_199_254_740_993]], ["id"], []})
+    assert Jason.decode!(json.content)["rows"] == [%{"id" => "9007199254740993"}]
+
+    assert {:error, :export_limit_exceeded} =
+             Exporter.build(
+               "xlsx",
+               {[[String.duplicate("x", 32_768)]], ["text"], []}
+             )
+  end
+
+  test "grid export preserves columns whose labels collide with each other or the row header" do
+    config = %{views: %{aggregate: %{grid: true, group_by: ["a", "b"], aggregate: ["n"]}}}
+    selecto = %Selecto{set: %{group_by: ["a", "b"]}}
+    rows = [["row", nil, 1], ["row", "[NULL]", 2], ["row", "a", 3]]
+
+    assert {:ok, export} =
+             Exporter.build("json", {rows, ["a", "b", "n"], []},
+               view_mode: "aggregate",
+               view_config: config,
+               selecto: selecto
+             )
+
+    assert Jason.decode!(export.content)["rows"] == [
+             %{
+               "a" => "row",
+               "[NULL]" => 1,
+               "[NULL] (2)" => 2,
+               "a (2)" => 3
+             }
+           ]
+  end
+
   test "builds grid-shaped CSV export for aggregate grid view" do
     query_results =
       {

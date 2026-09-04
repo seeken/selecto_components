@@ -201,6 +201,34 @@ mix selecto.gen.saved_views MyApp.SavedView MyApp.SavedViewContext
 
 Use `SelectoComponents.ExportedViews` when you want signed iframe/embed snapshots of current views.
 
+### Bounded grids and paired selection
+
+Aggregate grids use two visible axes and one measure, without SQL rollup.
+They request at most 10,001 grouped rows by default and reject oversized
+results instead of displaying a truncated matrix. Host configuration
+`config :selecto_components, :max_grid_result_cells, 10_000` accepts limits
+from 100 through 100,000; an explicit execution `view_meta.max_grid_result_cells`
+overrides it. The dense axis
+product is checked before rendering or export expansion.
+
+Row, column and cell selection supports up to 50 alternatives. Each cell is
+an AND pair inside an OR union, appended to existing filters. Server-signed
+axis tokens bind values to the current execution; stale, forged or oversized
+selections fail closed. Drilldown creates ordinary editable Detail filters.
+Grouping configuration is retained and opaque host runtime connections are
+reused rather than interpreted as fresh connection options.
+
+LiveView materialized exports are limited to 10,000 rows and 100,000 cells.
+This component exporter is not the cursor-streaming SPA API exporter.
+For larger flat exports, use a host endpoint with a streaming adapter and the
+SPA API export controller, with explicit authorization and resource budgets.
+
+Native browser verification is available in the sibling React repository as
+`node scripts/verify_liveview_grid.mjs`. Build the SQLite demo's assets first
+and run React's isolated `scripts/start_e2e_host.sh`; the native route uses
+`http://localhost:4191` to satisfy Phoenix's origin check. This script drives
+LiveView controls directly, not the SPA query API.
+
 ### Email And Scheduled Exports
 
 Assign these modules when you want the Export tab to send or manage exports:

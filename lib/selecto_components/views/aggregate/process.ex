@@ -57,7 +57,7 @@ defmodule SelectoComponents.Views.Aggregate.Process do
         coalesced_sel =
           case sel do
             {:field, field_expr, alias} ->
-              if should_coalesce_field?(col, selecto) do
+              if not grid and should_coalesce_field?(col, selecto) do
                 {:field, {:coalesce, [field_expr, {:literal, "[NULL]"}]}, alias}
               else
                 sel
@@ -65,7 +65,7 @@ defmodule SelectoComponents.Views.Aggregate.Process do
 
             {:row, [display_field, id_field], alias}
             when is_binary(display_field) or is_atom(display_field) ->
-              if row_display_coalesce?(display_field, columns, selecto) do
+              if not grid and row_display_coalesce?(display_field, columns, selecto) do
                 {:row, [{:coalesce, [display_field, {:literal, "[NULL]"}]}, id_field], alias}
               else
                 sel
@@ -87,9 +87,13 @@ defmodule SelectoComponents.Views.Aggregate.Process do
       end
 
     rollup_group_by =
-      case collapse_linked_rollup_groups(group_by_with_coalesce) do
-        [] -> []
-        selectors -> [{:rollup, selectors}]
+      if grid do
+        Enum.map(group_by_with_coalesce, &elem(&1, 1))
+      else
+        case collapse_linked_rollup_groups(group_by_with_coalesce) do
+          [] -> []
+          selectors -> [{:rollup, selectors}]
+        end
       end
 
     view_set = %{

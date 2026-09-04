@@ -63,9 +63,11 @@ defmodule SelectoComponents.Exporter.DatasetTest do
     assert dataset.kind == :grid
     assert dataset.headers == ["Year", "A", "B"]
 
+    assert dataset.row_keys == ["__grid_0", "__grid_1", "__grid_2"]
+
     assert dataset.rows == [
-             %{"Year" => 2001, "A" => 3, "B" => 5},
-             %{"Year" => 2002, "A" => 2, "B" => nil}
+             %{"__grid_0" => 2001, "__grid_1" => 3, "__grid_2" => 5},
+             %{"__grid_0" => 2002, "__grid_1" => 2, "__grid_2" => nil}
            ]
 
     assert dataset.metadata.row_count == 2

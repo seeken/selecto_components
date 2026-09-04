@@ -15,7 +15,17 @@ defmodule SelectoComponents.Exporter.Dataset do
   def from_query_results({rows, columns, _aliases} = query_results, opts)
       when is_list(rows) and is_list(columns) do
     if aggregate_grid_export?(opts) do
-      build_grid_dataset(query_results, opts)
+      maximum =
+        SelectoComponents.Views.Aggregate.GridSafety.limit(
+          Keyword.get(opts, :max_export_cells, 100_000)
+        )
+
+      row_count = rows |> Enum.map(&Enum.at(&1, 0)) |> MapSet.new() |> MapSet.size()
+      col_count = rows |> Enum.map(&Enum.at(&1, 1)) |> MapSet.new() |> MapSet.size()
+
+      if row_count * (col_count + 1) > maximum,
+        do: {:error, :export_limit_exceeded},
+        else: build_grid_dataset(query_results, opts)
     else
       build_table_dataset(query_results, opts)
     end
@@ -26,6 +36,10 @@ defmodule SelectoComponents.Exporter.Dataset do
   @spec sanitize_value(term()) :: term()
   def sanitize_value(nil), do: nil
   def sanitize_value(value) when is_binary(value), do: value
+
+  def sanitize_value(value) when is_integer(value) and abs(value) > 9_007_199_254_740_991,
+    do: Integer.to_string(value)
+
   def sanitize_value(value) when is_number(value), do: value
   def sanitize_value(value) when is_boolean(value), do: value
   def sanitize_value(%Date{} = value), do: Date.to_iso8601(value)
@@ -101,18 +115,38 @@ defmodule SelectoComponents.Exporter.Dataset do
   end
 
   defp build_grid_dataset({rows, columns, _aliases}, opts) do
+    rows =
+      case Keyword.get(opts, :selecto) do
+        %Selecto{set: %{group_by: groups}} ->
+          if Enum.any?(groups, &match?({:rollup, _}, &1)),
+            do: aggregate_grid_detail_rows(rows, 2),
+            else: rows
+
+        _ ->
+          aggregate_grid_detail_rows(rows, 2)
+      end
+
     row_header = grid_header(opts, 0, Enum.at(columns, 0))
     col_headers = unique_grid_axis_values(rows, 1)
     cells = build_grid_cells(rows)
-    headers = [row_header | Enum.map(col_headers, &sanitize_value/1)]
+
+    headers = [
+      row_header
+      | Enum.map(col_headers, fn
+          nil -> "[NULL]"
+          value -> value_to_string(value)
+        end)
+    ]
+
+    row_keys = Enum.map(0..length(col_headers), &"__grid_#{&1}")
     row_headers = unique_grid_axis_values(rows, 0)
 
     normalized_rows =
       Enum.map(row_headers, fn row_value ->
-        base_row = %{row_header => sanitize_value(row_value)}
+        base_row = %{"__grid_0" => sanitize_value(row_value)}
 
-        Enum.reduce(col_headers, base_row, fn col_value, acc ->
-          Map.put(acc, sanitize_value(col_value), Map.get(cells, {row_value, col_value}))
+        Enum.reduce(Enum.with_index(col_headers, 1), base_row, fn {col_value, index}, acc ->
+          Map.put(acc, "__grid_#{index}", Map.get(cells, {row_value, col_value}))
         end)
       end)
 
@@ -120,7 +154,7 @@ defmodule SelectoComponents.Exporter.Dataset do
      %{
        kind: :grid,
        headers: headers,
-       row_keys: headers,
+       row_keys: row_keys,
        rows: normalized_rows,
        metadata: %{row_count: length(normalized_rows), row_header: row_header}
      }}
@@ -186,16 +220,12 @@ defmodule SelectoComponents.Exporter.Dataset do
 
   defp unique_grid_axis_values(rows, idx) do
     rows
-    |> aggregate_grid_detail_rows(2)
-    |> Enum.reduce([], fn row, acc ->
-      value = Enum.at(row, idx)
-      if value in acc, do: acc, else: acc ++ [value]
-    end)
+    |> Enum.map(&Enum.at(&1, idx))
+    |> Enum.uniq()
   end
 
   defp build_grid_cells(rows) do
     rows
-    |> aggregate_grid_detail_rows(2)
     |> Enum.reduce(%{}, fn row, acc ->
       Map.put(acc, {Enum.at(row, 0), Enum.at(row, 1)}, sanitize_value(Enum.at(row, 2)))
     end)

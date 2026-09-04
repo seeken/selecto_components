@@ -6,6 +6,23 @@ defmodule SelectoComponents.Execution.PlanTest do
   alias SelectoComponents.Execution.Plan
   alias SelectoComponents.QueryContract
 
+  test "rebuild preserves an opaque host runtime handle without reconnecting" do
+    socket = base_socket()
+    old = socket.assigns.selecto
+    handle = %{opaque_pool: make_ref()}
+    runtime = Selecto.Runtime.Context.new(old.adapter, handle, %{source: :host})
+    configured = %{old | connection: handle, runtime: runtime}
+
+    plan =
+      Plan.build(
+        %{"view_mode" => "detail", "selected" => %{}},
+        Component.assign(socket, :selecto, configured)
+      )
+
+    assert plan.selecto.connection == handle
+    assert plan.selecto.runtime == runtime
+  end
+
   test "build returns execution-ready plan with runtime presentation context" do
     socket =
       base_socket()

@@ -56,6 +56,21 @@ defmodule SelectoComponents.Form.EventHandlers.DrillDown do
         end)
       end
 
+      def handle_event("agg_grid_filters", %{"alternatives" => alternatives}, socket) do
+        case SelectoComponents.Views.Aggregate.GridSelection.apply(socket, alternatives) do
+          {:ok, updated_socket, view_params} ->
+            {:noreply, ParamsState.state_to_url(view_params, updated_socket)}
+
+          {:error, _} ->
+            {:noreply,
+             Phoenix.LiveView.put_flash(
+               socket,
+               :error,
+               "Grid selection expired or is invalid. Run the query again."
+             )}
+        end
+      end
+
       @doc """
       Handles drill-down from graph view.
 

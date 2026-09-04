@@ -17,6 +17,7 @@ defmodule SelectoComponents.Views.Aggregate.Component do
        aggregate_page: 0,
        aggregate_page_loading?: false,
        aggregate_requested_page: nil,
+       grid_endpoint: socket.endpoint,
        theme: Theme.default_theme(:light)
      )}
   end
@@ -274,7 +275,16 @@ defmodule SelectoComponents.Views.Aggregate.Component do
     |> Enum.zip(defs)
     |> Enum.with_index(start_idx)
     |> Enum.reduce(%{}, fn {{axis_value, {_alias, {:group_by, field, coldef}}}, idx}, acc ->
-      put_filter_attr(acc, axis_value, field, coldef, idx)
+      acc = put_filter_attr(acc, axis_value, field, coldef, idx)
+      raw_value = raw_filter_value_for_group(axis_value, field, coldef)
+
+      if raw_value in ["", "[NULL]", "__NULL__"] do
+        acc
+        |> Map.put("phx-value-value#{idx}", raw_value)
+        |> Map.put("phx-value-literal#{idx}", "true")
+      else
+        acc
+      end
     end)
   end
 
@@ -905,10 +915,17 @@ defmodule SelectoComponents.Views.Aggregate.Component do
 
     # Prepare rollup rows with hierarchy level metadata
     num_group_by = length(group_by)
-    rollup_rows = prepare_rollup_rows(results, num_group_by)
+    aggregate_meta = Map.get(assigns, :view_meta, %{})
+
+    rollup_rows =
+      if truthy?(Map.get(aggregate_meta, :grid_enabled, false)) and
+           not Enum.any?(Map.get(assigns.selecto.set, :group_by, []), &match?({:rollup, _}, &1)) do
+        Enum.map(results, &{num_group_by, &1, false})
+      else
+        prepare_rollup_rows(results, num_group_by)
+      end
 
     page_row_count = length(rollup_rows)
-    aggregate_meta = Map.get(assigns, :view_meta, %{})
     server_paged? = Map.get(aggregate_meta, :aggregate_server_paged?, false)
 
     total_rows_before_cap =
@@ -1040,8 +1057,32 @@ defmodule SelectoComponents.Views.Aggregate.Component do
           ),
         else: nil
 
+    maximum_grid_cells =
+      SelectoComponents.Views.Aggregate.GridSafety.configured_limit(
+        Map.get(aggregate_meta, :max_grid_result_cells)
+      )
+
+    grid_limit_exceeded =
+      not is_nil(grid_data) and
+        SelectoComponents.Views.Aggregate.GridSafety.validate_matrix(
+          length(grid_data.row_headers),
+          length(grid_data.col_headers),
+          maximum_grid_cells
+        ) != :ok
+
+    grid_data = if grid_limit_exceeded, do: nil, else: grid_data
+
+    grid_tokens =
+      grid_selection_tokens(
+        grid_data,
+        Map.get(assigns, :grid_endpoint),
+        Map.get(aggregate_meta, :exe_id)
+      )
+
     assigns =
       assign(assigns,
+        grid_limit_exceeded: grid_limit_exceeded,
+        grid_tokens: grid_tokens,
         presentation_context: Map.get(assigns, :presentation_context, %{}),
         rollup_rows: rollup_rows,
         paged_rollup_rows: paged_rollup_rows,
@@ -1222,7 +1263,10 @@ defmodule SelectoComponents.Views.Aggregate.Component do
         Grid view requires exactly 2 Group By axes and 1 Aggregate.
       </div>
 
-      <%= if @grid_available? and @grid_data do %>
+      <%= cond do %>
+      <% @grid_limit_exceeded -> %>
+        <p role="alert">Aggregate grid is too large. Add filters or choose lower-cardinality groups.</p>
+      <% @grid_available? and @grid_data -> %>
         <div class="mb-2 flex flex-wrap items-center gap-2 text-sm" style="color: var(--sc-text-secondary);">
           <span class="font-medium">Aggregate Grid</span>
           <span
@@ -1250,9 +1294,16 @@ defmodule SelectoComponents.Views.Aggregate.Component do
           <span>High</span>
         </div>
         <div
-          id={"aggregate-grid-wrapper-#{@myself}"}
+          id={"aggregate-grid-wrapper-#{@myself}-#{@view_meta[:exe_id]}"}
           class={Theme.slot(@theme, :panel) <> " mb-1 max-h-[70vh] overflow-x-auto overflow-y-auto"}
+          phx-hook=".GridSelection"
+          phx-update="ignore"
         >
+          <div :if={@grid_tokens} class="flex gap-2 p-2">
+            <button type="button" data-grid-apply disabled>Drill down selected (0)</button>
+            <button type="button" data-grid-clear>Clear grid selection</button>
+            <span data-grid-error role="alert"></span>
+          </div>
           <table class="min-w-full table-auto">
             <thead style="background: var(--sc-surface-bg-alt);">
               <tr>
@@ -1261,6 +1312,7 @@ defmodule SelectoComponents.Views.Aggregate.Component do
                 </th>
                 <%= for col_value <- @grid_data.col_headers do %>
                   <th class="sticky top-0 z-20 px-3 py-3.5 text-left text-sm font-semibold" style="background: var(--sc-surface-bg-alt); color: var(--sc-text-primary);">
+                    <button :if={@grid_tokens} type="button" data-grid-select={Jason.encode!([@grid_tokens.columns[col_value]])} aria-label={"Select column #{format_group_value(col_value, @grid_data.col_coldef, @presentation_context)}"} aria-pressed="false">Select column</button>
                     <div
                       phx-click="agg_add_filters"
                       {build_axis_filter_attrs(@grid_data.col_axis, col_value)}
@@ -1289,6 +1341,7 @@ defmodule SelectoComponents.Views.Aggregate.Component do
                   data-result-column-index="0"
                   tabindex="-1"
                 >
+                  <button :if={@grid_tokens} type="button" data-grid-select={Jason.encode!([@grid_tokens.rows[row_value]])} aria-label={"Select row #{format_group_value(row_value, @grid_data.row_coldef, @presentation_context)}"} aria-pressed="false">Select row</button>
                   <div
                     phx-click="agg_add_filters"
                     {build_axis_filter_attrs(@grid_data.row_axis, row_value)}
@@ -1309,14 +1362,12 @@ defmodule SelectoComponents.Views.Aggregate.Component do
             data-result-column-index={col_idx + 1}
             tabindex="-1"
           >
+                  <button :if={@grid_tokens} type="button" data-grid-select={Jason.encode!([@grid_tokens.rows[row_value], @grid_tokens.columns[col_value]])} aria-label={"Select cell #{row_idx + 1} / #{col_idx + 1}"} aria-pressed="false">Select cell</button>
                   <%= if Map.has_key?(@grid_data.cell_group_cols, {row_value, col_value}) do %>
                   <div
                     phx-click="agg_add_filters"
-                    {build_filter_attrs(
-                      Map.get(@grid_data.cell_group_cols, {row_value, col_value}, []),
-                      @group_by,
-                      @num_group_by
-                    )}
+                    {Map.merge(build_axis_filter_attrs(@grid_data.row_axis, row_value),
+                      build_axis_filter_attrs(@grid_data.col_axis, col_value))}
                     data-selecto-result-action
                     class="cursor-pointer whitespace-nowrap hover:underline"
                   >
@@ -1334,7 +1385,37 @@ defmodule SelectoComponents.Views.Aggregate.Component do
             </tbody>
           </table>
         </div>
-      <% else %>
+        <script :type={Phoenix.LiveView.ColocatedHook} name=".GridSelection">
+          export default {
+            mounted() {
+              this.selected = new Map();
+              this.click = (event) => {
+                const button = event.target.closest("button");
+                if (!button || !this.el.contains(button)) return;
+                const error = this.el.querySelector("[data-grid-error]");
+                if (button.hasAttribute("data-grid-select")) {
+                  const key = button.dataset.gridSelect;
+                  if (this.selected.has(key)) this.selected.delete(key);
+                  else if (this.selected.size < 50) this.selected.set(key, JSON.parse(key));
+                  else { error.textContent = "Select at most 50 cells or axes."; return; }
+                  error.textContent = "";
+                } else if (button.hasAttribute("data-grid-clear")) this.selected.clear();
+                else if (button.hasAttribute("data-grid-apply") && this.selected.size) this.pushEvent("agg_grid_filters", { alternatives: [...this.selected.values()] });
+                this.el.querySelectorAll("[data-grid-select]").forEach((node) => {
+                  const selected = this.selected.has(node.dataset.gridSelect);
+                  node.setAttribute("aria-pressed", String(selected));
+                  node.style.outline = selected ? "2px solid var(--sc-accent, #176b55)" : "";
+                  node.style.fontWeight = selected ? "700" : "";
+                });
+                const apply = this.el.querySelector("[data-grid-apply]");
+                if (apply) { apply.disabled = !this.selected.size; apply.textContent = `Drill down selected (${this.selected.size})`; }
+              };
+              this.el.addEventListener("click", this.click);
+            },
+            destroyed() { this.el.removeEventListener("click", this.click); this.selected.clear(); }
+          };
+        </script>
+      <% true -> %>
         <div
           id={"aggregate-table-wrapper-#{@myself}"}
           class={Theme.slot(@theme, :panel) <> " responsive-table-wrapper overflow-x-auto"}
@@ -1417,16 +1498,17 @@ defmodule SelectoComponents.Views.Aggregate.Component do
     col_axis = Enum.at(display_group_axes, 1, default_grid_axis("Group 2"))
 
     {row_headers, col_headers, cells, cell_group_cols} =
-      Enum.reduce(detail_rows, {[], [], %{}, %{}}, fn row,
-                                                      {row_acc, col_acc, cells_acc,
-                                                       group_cols_acc} ->
+      Enum.reduce(detail_rows, {MapSet.new(), MapSet.new(), %{}, %{}}, fn row,
+                                                                          {row_acc, col_acc,
+                                                                           cells_acc,
+                                                                           group_cols_acc} ->
         row_value = grid_axis_value(row, row_axis)
         col_value = grid_axis_value(row, col_axis)
         agg_value = Enum.at(row, num_group_by)
         group_cols = Enum.take(row, num_group_by)
 
-        row_acc = if row_value in row_acc, do: row_acc, else: row_acc ++ [row_value]
-        col_acc = if col_value in col_acc, do: col_acc, else: col_acc ++ [col_value]
+        row_acc = MapSet.put(row_acc, row_value)
+        col_acc = MapSet.put(col_acc, col_value)
         cells_acc = Map.put(cells_acc, {row_value, col_value}, agg_value)
         group_cols_acc = Map.put(group_cols_acc, {row_value, col_value}, group_cols)
 
@@ -1437,8 +1519,8 @@ defmodule SelectoComponents.Views.Aggregate.Component do
     col_coldef = grid_axis_coldef(col_axis)
     agg_coldef = grid_coldef(aggregates, 0)
 
-    row_headers = sort_group_values(row_headers, row_coldef)
-    col_headers = sort_group_values(col_headers, col_coldef)
+    row_headers = sort_group_values(MapSet.to_list(row_headers), row_coldef)
+    col_headers = sort_group_values(MapSet.to_list(col_headers), col_coldef)
     cell_styles = build_grid_cell_styles(cells, colorize?, scale_mode, theme)
 
     %{
@@ -1476,6 +1558,37 @@ defmodule SelectoComponents.Views.Aggregate.Component do
     Enum.into(cells, %{}, fn {key, value} ->
       {key, grid_cell_style(value, max_positive_value, scale_mode, theme)}
     end)
+  end
+
+  defp grid_selection_tokens(nil, _, _), do: nil
+  defp grid_selection_tokens(_, nil, _), do: nil
+  defp grid_selection_tokens(_, _, nil), do: nil
+
+  defp grid_selection_tokens(grid, endpoint, execution) do
+    alias SelectoComponents.Views.Aggregate.GridSelection
+
+    %{
+      rows:
+        Map.new(grid.row_headers, fn value ->
+          {value,
+           GridSelection.token(
+             endpoint,
+             execution,
+             :row,
+             build_axis_filter_attrs(grid.row_axis, value)
+           )}
+        end),
+      columns:
+        Map.new(grid.col_headers, fn value ->
+          {value,
+           GridSelection.token(
+             endpoint,
+             execution,
+             :column,
+             build_axis_filter_attrs(grid.col_axis, value)
+           )}
+        end)
+    }
   end
 
   defp grid_cell_style(value, max_positive_value, scale_mode, theme) do
@@ -1627,22 +1740,23 @@ defmodule SelectoComponents.Views.Aggregate.Component do
   end
 
   defp filter_value_for_group(value, field, coldef) do
-    extracted_value =
-      if composite_group_value?(coldef) or match?({:row, _fields, _alias}, field) do
-        case value do
-          {_display_value, filter_value} -> filter_value
-          [_display_value, filter_value] -> filter_value
-          _ -> value
-        end
-      else
-        value
-      end
-
-    case extracted_value do
+    case raw_filter_value_for_group(value, field, coldef) do
       nil -> "__NULL__"
       "" -> "__NULL__"
       "[NULL]" -> "__NULL__"
-      _ -> extracted_value
+      other -> other
+    end
+  end
+
+  defp raw_filter_value_for_group(value, field, coldef) do
+    if composite_group_value?(coldef) or match?({:row, _fields, _alias}, field) do
+      case value do
+        {_display_value, filter_value} -> filter_value
+        [_display_value, filter_value] -> filter_value
+        _ -> value
+      end
+    else
+      value
     end
   end
 

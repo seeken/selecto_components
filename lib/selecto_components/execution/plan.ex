@@ -105,7 +105,8 @@ defmodule SelectoComponents.Execution.Plan do
     rebuilt =
       old_selecto.domain
       |> Selecto.configure(
-        old_selecto.connection,
+        old_selecto.runtime ||
+          Selecto.Runtime.Context.new(old_selecto.adapter, old_selecto.connection),
         adapter: old_selecto.adapter,
         validate: false
       )

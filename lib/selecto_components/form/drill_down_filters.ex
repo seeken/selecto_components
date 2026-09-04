@@ -75,7 +75,7 @@ defmodule SelectoComponents.Form.DrillDownFilters do
       value_key = "value#{idx}"
       value = Map.get(params, value_key, "")
       group_idx = Map.get(params, "gidx#{idx}")
-      {field_name, value, group_idx}
+      {field_name, value, group_idx, Map.get(params, "literal#{idx}") == "true"}
     end)
   end
 
@@ -590,8 +590,14 @@ defmodule SelectoComponents.Form.DrillDownFilters do
   defp drill_down_filter_specs(params, socket) do
     params
     |> extract_indexed_pairs()
-    |> Enum.map(fn {field_name, value, group_idx} ->
-      build_drill_down_filter_spec(socket, field_name, value, group_idx)
+    |> Enum.map(fn {field_name, value, group_idx, literal?} ->
+      spec = build_drill_down_filter_spec(socket, field_name, value, group_idx)
+
+      if literal? do
+        %{spec | filter_config: Map.merge(spec.filter_config, %{"comp" => "=", "value" => value})}
+      else
+        spec
+      end
     end)
   end
 

@@ -505,6 +505,26 @@ defmodule SelectoComponents.Views.Aggregate.ProcessTest do
            ]
   end
 
+  test "grid uses ordinary grouping and preserves database nulls without text sentinels" do
+    columns = %{"city" => %{name: "City", type: :string, colid: "city"}}
+
+    {view_set, meta} =
+      Process.view(
+        nil,
+        %{
+          "aggregate_grid" => "true",
+          "group_by" => %{"g0" => %{"field" => "city", "index" => "0"}}
+        },
+        columns,
+        [],
+        nil
+      )
+
+    assert view_set.selected == [{:field, "city", "City"}]
+    assert view_set.group_by == [{:field, "city", "City"}]
+    assert meta.grid_enabled
+  end
+
   test "view collapses linked group by items into rollup grouping sets" do
     columns = %{
       "city" => %{name: "City", type: :string, colid: "city"},
