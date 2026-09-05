@@ -215,7 +215,8 @@ defmodule SelectoComponents.Views.Detail.Component do
     assigns =
       assign(assigns,
         aliases: aliases,
-        visible_aliases: visible_aliases(Map.get(assigns.selecto.set, :columns, [])),
+        visible_aliases:
+          visible_aliases(Map.get(assigns.selecto.set, :columns, []), assigns.selecto),
         results: normalized_results,
         total_rows: total_rows,
         row_offset: row_offset,
@@ -964,19 +965,30 @@ defmodule SelectoComponents.Views.Detail.Component do
       end
   end
 
-  defp visible_aliases(columns) do
+  defp visible_aliases(columns, selecto) do
     Enum.map(columns, fn column ->
-      column_header_label(column)
+      column_header_label(column, selecto)
     end)
   end
 
-  defp column_header_label(column) do
+  defp column_header_label(column, selecto) do
     alias_name = present_string(config_get(column, "alias"))
     field_name = present_string(config_get(column, "field"))
+
+    configured_name =
+      selecto
+      |> resolve_column_definition(field_name, alias_name)
+      |> config_get("name")
+      |> present_string()
+
+    business_name = root_business_name(selecto, field_name) || configured_name
 
     cond do
       alias_name ->
         alias_name
+
+      business_name ->
+        business_name
 
       field_name ->
         field_name
@@ -992,12 +1004,39 @@ defmodule SelectoComponents.Views.Detail.Component do
     end
   end
 
+  defp root_business_name(selecto, field_name) when is_binary(field_name) do
+    if not String.contains?(field_name, ".") do
+      domain = Selecto.domain(selecto)
+
+      override_name =
+        domain
+        |> config_get("columns")
+        |> config_get(field_name)
+        |> config_get("name")
+        |> present_string()
+
+      source_name =
+        domain
+        |> config_get("source")
+        |> config_get("columns")
+        |> config_get(field_name)
+        |> config_get("name")
+        |> present_string()
+
+      override_name || source_name
+    end
+  end
+
+  defp root_business_name(_selecto, _field_name), do: nil
+
   defp strip_short_prefix(field_name) when is_binary(field_name) do
     case String.split(field_name, "_", parts: 2) do
       [prefix, rest] when byte_size(prefix) <= 3 and rest != "" -> rest
       _ -> field_name
     end
   end
+
+  defp present_string(nil), do: nil
 
   defp present_string(value) when is_binary(value) do
     trimmed = String.trim(value)
