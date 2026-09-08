@@ -639,6 +639,17 @@ defmodule SelectoComponents.Views.Detail.QueryPagination do
         max_rows_limit: Map.get(context, :max_rows_limit)
       }
     )
+
+    Selecto.Telemetry.emit_for(
+      [:selecto_components, :telemetry, :action],
+      %{
+        count_time_ms: extract_execution_time(count_metadata),
+        page_fetch_time_ms: extract_execution_time(page_metadata),
+        cache_hit: bool_to_int(overall_cache_hit?),
+        cache_miss: bool_to_int(not overall_cache_hit?)
+      },
+      %{operation_kind: :detail_query, outcome: :ok}
+    )
   end
 
   defp extract_execution_time(metadata) when is_map(metadata) do

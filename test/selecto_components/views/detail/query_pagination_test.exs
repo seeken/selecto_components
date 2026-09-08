@@ -51,6 +51,10 @@ defmodule SelectoComponents.Views.Detail.QueryPaginationTest do
     send(parent, {:detail_query_telemetry, measurements, metadata})
   end
 
+  def handle_canonical_telemetry(event, measurements, metadata, parent) do
+    send(parent, {:canonical_detail_telemetry, event, measurements, metadata})
+  end
+
   defp detail_selecto(selected) do
     domain = %{
       name: "DetailQueryPaginationTest",
@@ -193,5 +197,31 @@ defmodule SelectoComponents.Views.Detail.QueryPaginationTest do
     assert metadata[:count_mode] == "bounded"
 
     :telemetry.detach(handler_id)
+  end
+
+  test "emits a vendor-neutral canonical detail action event" do
+    handler_id = "canonical-detail-telemetry-#{System.unique_integer([:positive])}"
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:selecto_components, :telemetry, :action],
+        &__MODULE__.handle_canonical_telemetry/4,
+        self()
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    selecto = detail_selecto(["name"])
+
+    {{:ok, {_rows, _columns, _aliases}, _metadata}, _updated_view_meta, _cache} =
+      QueryPagination.execute(selecto, params(), view_meta(%{count_mode: "bounded"}), socket())
+
+    assert_receive {:canonical_detail_telemetry, [:selecto_components, :telemetry, :action],
+                    %{count_time_ms: count_time, page_fetch_time_ms: page_time},
+                    %{schema_version: 1, operation_kind: :detail_query, outcome: :ok}}
+
+    assert is_integer(count_time)
+    assert is_integer(page_time)
   end
 end
