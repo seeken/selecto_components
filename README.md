@@ -34,7 +34,7 @@ reversible mutation intent until collective Apply.
   - `Detail`
   - `Aggregate`
   - `Graph`
-- extension-driven view support such as map views via `selecto_postgis`
+- extension-driven view support such as map views via `selecto_db_postgresql_postgis`
 - exported-view, email-export, and scheduled-export integration points
 
 ## Requirements
