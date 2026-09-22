@@ -46,7 +46,13 @@ defmodule SelectoComponents.MixProject do
       {:phoenix, "~> 1.8.0"},
       {:phoenix_live_view, "~> 1.1.4 or ~> 1.2.0"},
       # {:phoenix_html_helpers, "~> 1.0"},
-      selecto_dep(),
+      ecosystem_dep(:selecto, "selecto",
+        ref: "62c9bce7de1b3918daf7e467b57cf750e6f10bba",
+        override: true
+      ),
+      ecosystem_dep(:selecto_templates, "selecto_templates",
+        ref: "d47207509d2958bf3a0c0748e62740f91e0ccc36"
+      ),
       {:uuid, "~> 1.1"},
       {:ex_doc, "~> 0.29.1", only: :dev, runtime: false},
       # {:vega_lite, "~> 0.1.6"},
@@ -62,19 +68,48 @@ defmodule SelectoComponents.MixProject do
     ]
   end
 
-  defp selecto_dep do
-    if use_local_selecto?() do
-      {:selecto, path: "../selecto"}
-    else
-      {:selecto, ">= 0.5.0 and < 0.6.0"}
+  # --- Selecto ecosystem dependency resolution -------------------------------
+  # Resolves a sibling Selecto package from a local checkout when one is
+  # available and from its pinned GitHub commit otherwise.
+  #
+  #   SELECTO_LIVE_<SIBLING>       path to a checkout, overriding discovery
+  #   SELECTO_ECOSYSTEM_USE_LOCAL  1/true forces siblings, 0/false forces git
+  #   SELECTO_ECOSYSTEM_GIT_URL    "ssh" fetches over SSH instead of HTTPS
+  #
+  # A mix.exs cannot depend on a package to compute its own deps, so this block
+  # is duplicated verbatim across the Selecto repos. Keep the copies identical.
+  defp ecosystem_dep(name, sibling_name, opts) do
+    {ref, dep_opts} = Keyword.pop!(opts, :ref)
+
+    case ecosystem_sibling_path(sibling_name) do
+      nil -> {name, Keyword.merge(ecosystem_git_source(sibling_name, ref), dep_opts)}
+      path -> {name, Keyword.put(dep_opts, :path, path)}
     end
   end
 
-  defp use_local_selecto? do
-    case System.get_env("SELECTO_ECOSYSTEM_USE_LOCAL") do
-      value when value in ["1", "true", "TRUE", "yes", "YES", "on", "ON"] -> true
-      value when value in ["0", "false", "FALSE", "no", "NO", "off", "OFF"] -> false
-      _ -> File.dir?(Path.expand("../selecto", __DIR__))
+  defp ecosystem_git_source(sibling_name, ref) do
+    case System.get_env("SELECTO_ECOSYSTEM_GIT_URL") do
+      value when value in ["ssh", "SSH"] ->
+        [git: "git@github.com:seeken/#{sibling_name}.git", ref: ref]
+
+      _value ->
+        [github: "seeken/#{sibling_name}", ref: ref]
+    end
+  end
+
+  defp ecosystem_sibling_path(sibling_name) do
+    case System.get_env("SELECTO_LIVE_" <> String.upcase(sibling_name)) do
+      path when is_binary(path) and path != "" ->
+        Path.expand(path, __DIR__)
+
+      _value ->
+        sibling = Path.expand("../#{sibling_name}", __DIR__)
+
+        case System.get_env("SELECTO_ECOSYSTEM_USE_LOCAL") do
+          value when value in ["0", "false", "FALSE", "no", "NO", "off", "OFF"] -> nil
+          value when value in ["1", "true", "TRUE", "yes", "YES", "on", "ON"] -> sibling
+          _value -> if File.dir?(sibling), do: sibling
+        end
     end
   end
 
