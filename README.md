@@ -423,6 +423,20 @@ Typical host responsibilities are:
 - Refresh the active Selecto query and close or reset the modal after apply.
 - Use flash/error messages for the result surface the host wants.
 
+## Native Template Hosts
+
+`SelectoComponents.TemplateHost` owns a compiled template runtime inside an
+authenticated LiveView. It mounts pure state, normalizes declared browser events,
+starts authorized source effects through supported LiveView async tasks, and rejects
+stale completions through the portable reducer.
+
+Hosts that want ordinary HEEx markup can call `TemplateHost.native_model/1`. The
+returned `selecto.template.native-heex-model.v1` map contains current input/state,
+projected source rows, stable runtime identity, and compiled component-event
+descriptors. It excludes the manifest, socket, repository, database connection, and
+host authorization. The LiveView still derives actor and tenant scope from its trusted
+session and attaches fresh authority whenever it executes a source effect.
+
 ## Custom View Systems
 
 `selecto_components` supports external view packages through `SelectoComponents.Views.System`.

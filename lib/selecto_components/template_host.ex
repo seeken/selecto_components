@@ -31,6 +31,7 @@ defmodule SelectoComponents.TemplateHost do
   alias SelectoComponents.TemplateEffectRunner
   alias SelectoComponents.TemplateEventDispatcher
   alias SelectoComponents.TemplateInstance
+  alias SelectoComponents.TemplateNativeModel
 
   @type diagnostic :: map()
 
@@ -90,4 +91,8 @@ defmodule SelectoComponents.TemplateHost do
   @spec handle_async(term(), {:ok, map()} | {:exit, term()}, Phoenix.LiveView.Socket.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
   defdelegate handle_async(name, result, socket), to: TemplateEffectRunner
+
+  @doc "Builds an HTML-free model for trusted native HEEx authoring."
+  @spec native_model(Phoenix.LiveView.Socket.t()) :: {:ok, map()} | {:error, diagnostic()}
+  defdelegate native_model(socket), to: TemplateNativeModel, as: :build
 end
