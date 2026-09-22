@@ -80,6 +80,27 @@ defmodule SelectoComponents.TemplateRendererTest do
     assert html =~ ~s(data-order-id="17")
   end
 
+  test "registry callbacks receive normal Phoenix component assigns" do
+    manifest = fixture("customer-summary.compile.json")
+
+    assert {:ok, mounted} =
+             SelectoTemplates.mount_runtime(manifest,
+               instance_id: "customer-assigns",
+               release_id: "release-1",
+               inputs: %{
+                 "customer" => %{
+                   "company_name" => "Acme",
+                   "address" => %{"city" => "Denver", "region" => "CO"}
+                 }
+               }
+             )
+
+    registry = put_in(registry(), [:components, "Card"], &assigned_card/1)
+
+    assert {:ok, safe} = TemplateRenderer.render(manifest, mounted["snapshot"], registry)
+    assert Phoenix.HTML.safe_to_string(safe) =~ ~s(data-component-assign="selecto-template-card")
+  end
+
   test "fails closed when the host has no registered component renderer" do
     manifest = fixture("customer-summary.compile.json")
 
@@ -103,6 +124,14 @@ defmodule SelectoComponents.TemplateRendererTest do
   def card(assigns) do
     ~H"""
     <section id={@dom_id} class={@props["class"]}>{@children}</section>
+    """
+  end
+
+  def assigned_card(assigns) do
+    assigns = assign(assigns, :assign_marker, "selecto-template-card")
+
+    ~H"""
+    <section id={@dom_id} data-component-assign={@assign_marker}>{@children}</section>
     """
   end
 

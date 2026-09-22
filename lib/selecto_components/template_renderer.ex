@@ -12,11 +12,11 @@ defmodule SelectoComponents.TemplateRenderer do
         include: &MyComponents.include/1
       }
 
-  Every callback receives resolved `:props` or `:attributes`, declared `:events`,
-  safe rendered `:children`, and stable `:dom_id`/`:node_id` values. Callback
-  output is passed through `Phoenix.HTML.Safe`, so a plain string is escaped;
-  callbacks return HEEx or another explicit safe value when they intentionally
-  produce markup.
+  Every callback receives a Phoenix component assigns map with resolved `:props`
+  or `:attributes`, declared `:events`, safe rendered `:children`, and stable
+  `:dom_id`/`:node_id` values. Callback output is passed through
+  `Phoenix.HTML.Safe`, so a plain string is escaped; callbacks return HEEx or
+  another explicit safe value when they intentionally produce markup.
   """
 
   use Phoenix.Component
@@ -353,7 +353,8 @@ defmodule SelectoComponents.TemplateRenderer do
 
   defp invoke_renderer(renderer, assigns, node_id) do
     try do
-      {:ok, {:safe, Safe.to_iodata(renderer.(assigns))}}
+      component_assigns = Map.put(assigns, :__changed__, nil)
+      {:ok, {:safe, Safe.to_iodata(renderer.(component_assigns))}}
     rescue
       _exception ->
         {:error, diagnostic("renderer_failed", "host renderer failed", node_id)}
