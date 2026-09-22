@@ -30,10 +30,12 @@ defmodule SelectoComponents.TemplateHost do
   """
 
   alias Phoenix.Component
+  import Phoenix.LiveView, only: [cancel_async: 2, connected?: 1, start_async: 3]
 
   @manifest_assign :template_manifest
   @snapshot_assign :template_runtime_snapshot
   @effects_assign :template_pending_effects
+  @running_assign :template_running_effects
   @observation_assign :template_last_observation
   @error_assign :template_runtime_error
 
@@ -51,6 +53,7 @@ defmodule SelectoComponents.TemplateHost do
           socket
           |> Component.assign(@manifest_assign, manifest)
           |> Component.assign(@effects_assign, [])
+          |> Component.assign(@running_assign, %{})
           |> assign_observation(observation)
 
         {:ok, socket}
@@ -128,6 +131,100 @@ defmodule SelectoComponents.TemplateHost do
     {effects, Component.assign(socket, @effects_assign, [])}
   end
 
+  @doc """
+  Starts queued source effects on a connected LiveView.
+
+  The injected executor receives one data-only portable effect and must attach
+  fresh host authority before lowering or executing it. It returns
+  `{:ok, result}` or `{:error, error}`. The async closure captures the effect,
+  runtime identity, and executor only; it never captures the socket.
+
+  Effects remain queued during the disconnected render. Work is keyed by source,
+  so a newer generation cancels and supersedes older work for that source.
+  """
+  @spec start_effects(Phoenix.LiveView.Socket.t(), (map() -> {:ok, term()} | {:error, term()})) ::
+          {:ok, Phoenix.LiveView.Socket.t()}
+          | {:error, diagnostic(), Phoenix.LiveView.Socket.t()}
+  def start_effects(socket, executor) when is_function(executor, 1) do
+    if connected?(socket) do
+      with {:ok, _manifest, snapshot} <- runtime(socket),
+           :ok <- valid_effects(Map.get(socket.assigns, @effects_assign, [])) do
+        identity = Map.take(snapshot, ["instance_id", "release_id"])
+        {effects, socket} = take_effects(socket)
+
+        socket =
+          Enum.reduce(effects, socket, fn effect, current ->
+            source = effect["source"]
+            key = async_key(source, effect["generation"])
+            previous_key = Map.get(current.assigns[@running_assign], source)
+
+            current
+            |> maybe_cancel_async(previous_key)
+            |> start_async(key, fn -> execute_effect(identity, effect, executor) end)
+            |> Component.assign(
+              @running_assign,
+              Map.put(current.assigns[@running_assign], source, key)
+            )
+          end)
+
+        {:ok, socket}
+      else
+        {:error, error} -> assign_error(socket, error)
+      end
+    else
+      {:ok, socket}
+    end
+  end
+
+  def start_effects(socket, _executor),
+    do:
+      assign_error(
+        socket,
+        diagnostic("invalid_effect_executor", "template effect executor is invalid")
+      )
+
+  @doc "Handles a completion delivered by `Phoenix.LiveView.start_async/3`."
+  @spec handle_async(term(), {:ok, map()} | {:exit, term()}, Phoenix.LiveView.Socket.t()) ::
+          {:noreply, Phoenix.LiveView.Socket.t()}
+  def handle_async(
+        {:selecto_template_source, source, generation} = key,
+        {:ok, completion},
+        socket
+      )
+      when is_binary(source) and is_integer(generation) and is_map(completion) do
+    socket = clear_running_effect(socket, source, key)
+
+    case complete(socket, completion) do
+      {:ok, socket} -> {:noreply, socket}
+      {:error, _diagnostic, socket} -> {:noreply, socket}
+    end
+  end
+
+  def handle_async(
+        {:selecto_template_source, source, generation} = key,
+        {:exit, _reason},
+        socket
+      )
+      when is_binary(source) and is_integer(generation) do
+    socket = clear_running_effect(socket, source, key)
+
+    case failed_effect_completion(socket, source, generation, %{
+           "code" => "effect_task_failed",
+           "message" => "template source task failed"
+         }) do
+      {:ok, completion} ->
+        case complete(socket, completion) do
+          {:ok, socket} -> {:noreply, socket}
+          {:error, _diagnostic, socket} -> {:noreply, socket}
+        end
+
+      {:error, diagnostic} ->
+        {:noreply, elem(assign_error(socket, diagnostic), 2)}
+    end
+  end
+
+  def handle_async(_name, _result, socket), do: {:noreply, socket}
+
   defp runtime(socket) do
     case {
       Map.get(socket.assigns, @manifest_assign),
@@ -147,6 +244,118 @@ defmodule SelectoComponents.TemplateHost do
       {:error, diagnostic("invalid_event_id", "template event ID is invalid")}
     end
   end
+
+  defp valid_effects(effects) when is_list(effects) do
+    if Enum.all?(effects, &valid_effect?/1) do
+      :ok
+    else
+      {:error, diagnostic("invalid_effect", "template effect queue is invalid")}
+    end
+  end
+
+  defp valid_effects(_effects),
+    do: {:error, diagnostic("invalid_effect", "template effect queue is invalid")}
+
+  defp valid_effect?(%{
+         "schema" => "selecto.template.runtime-effect.v1",
+         "kind" => "load_source",
+         "effect_id" => effect_id,
+         "source" => source,
+         "generation" => generation,
+         "bindings" => %{"input" => inputs, "state" => state}
+       }) do
+    is_binary(effect_id) and effect_id != "" and is_binary(source) and source != "" and
+      is_integer(generation) and generation > 0 and is_map(inputs) and is_map(state)
+  end
+
+  defp valid_effect?(_effect), do: false
+
+  defp execute_effect(identity, effect, executor) do
+    result =
+      try do
+        executor.(effect)
+      rescue
+        _exception ->
+          {:error,
+           %{
+             "code" => "effect_execution_failed",
+             "message" => "template source execution failed"
+           }}
+      catch
+        _kind, _reason ->
+          {:error,
+           %{
+             "code" => "effect_execution_failed",
+             "message" => "template source execution failed"
+           }}
+      end
+
+    completion(identity, effect, result)
+  end
+
+  defp completion(identity, effect, {:ok, result}) do
+    completion_identity(identity, effect)
+    |> Map.merge(%{"outcome" => "ok", "result" => result})
+  end
+
+  defp completion(identity, effect, {:error, error}) do
+    completion_identity(identity, effect)
+    |> Map.merge(%{"outcome" => "error", "error" => error})
+  end
+
+  defp completion(identity, effect, _other) do
+    completion(identity, effect, {
+      :error,
+      %{
+        "code" => "invalid_effect_result",
+        "message" => "template source executor returned an invalid result"
+      }
+    })
+  end
+
+  defp completion_identity(identity, effect) do
+    %{
+      "schema" => "selecto.template.runtime-completion.v1",
+      "instance_id" => identity["instance_id"],
+      "release_id" => identity["release_id"],
+      "effect_id" => effect["effect_id"],
+      "source" => effect["source"],
+      "generation" => effect["generation"]
+    }
+  end
+
+  defp failed_effect_completion(socket, source, generation, error) do
+    with {:ok, _manifest, snapshot} <- runtime(socket),
+         %{} <- snapshot["sources"][source] do
+      effect = %{
+        "effect_id" => "#{snapshot["instance_id"]}:source:#{source}:#{generation}",
+        "source" => source,
+        "generation" => generation
+      }
+
+      {:ok,
+       completion(Map.take(snapshot, ["instance_id", "release_id"]), effect, {:error, error})}
+    else
+      nil -> {:error, diagnostic("invalid_effect", "template effect source is invalid")}
+      {:error, diagnostic} -> {:error, diagnostic}
+    end
+  end
+
+  defp maybe_cancel_async(socket, nil), do: socket
+  defp maybe_cancel_async(socket, key), do: cancel_async(socket, key)
+
+  defp clear_running_effect(socket, source, key) do
+    running = Map.get(socket.assigns, @running_assign, %{})
+
+    if running[source] == key do
+      Component.assign(socket, @running_assign, Map.delete(running, source))
+    else
+      socket
+    end
+  end
+
+  defp async_key(source, generation),
+    do: {:selecto_template_source, source, generation}
 
   defp reduce(socket, operation) do
     case operation.() do

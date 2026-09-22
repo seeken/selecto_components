@@ -96,6 +96,102 @@ defmodule SelectoComponents.TemplateHostTest do
     assert returned_socket.assigns.template_runtime_error == error
   end
 
+  test "effects remain queued during disconnected rendering" do
+    assert {:ok, mounted} = TemplateHost.mount(socket(), manifest(), mount_opts())
+    assert {:ok, returned} = TemplateHost.start_effects(mounted, fn _effect -> flunk() end)
+    assert length(returned.assigns.template_pending_effects) == 1
+  end
+
+  test "a connected host executes only data effects and applies the async completion" do
+    assert {:ok, mounted} = TemplateHost.mount(socket(self()), manifest(), mount_opts())
+    parent = self()
+
+    executor = fn effect ->
+      send(parent, {:executed_effect, effect})
+      {:ok, [%{"id" => 1, "order_number" => "PO-100"}]}
+    end
+
+    assert {:ok, running} = TemplateHost.start_effects(mounted, executor)
+    assert running.assigns.template_pending_effects == []
+
+    assert_receive {:executed_effect, effect}
+
+    assert effect["bindings"] == %{
+             "input" => %{},
+             "state" => %{"search" => "", "selected_order_id" => nil}
+           }
+
+    refute Map.has_key?(effect, "tenant_id")
+
+    assert_receive {:phoenix, :async_result,
+                    {:start,
+                     {_ref, nil, {:selecto_template_source, "orders", 1}, {:ok, completion}}}}
+
+    assert completion["instance_id"] == "instance-live-1"
+    assert completion["generation"] == 1
+
+    assert {:noreply, completed} =
+             TemplateHost.handle_async(
+               {:selecto_template_source, "orders", 1},
+               {:ok, completion},
+               running
+             )
+
+    assert completed.assigns.template_runtime_snapshot["sources"]["orders"]["status"] ==
+             "ready"
+  end
+
+  test "executor failures become bounded error completions" do
+    assert {:ok, mounted} = TemplateHost.mount(socket(self()), manifest(), mount_opts())
+
+    assert {:ok, running} =
+             TemplateHost.start_effects(mounted, fn _effect ->
+               raise "database details must not escape"
+             end)
+
+    assert_receive {:phoenix, :async_result,
+                    {:start,
+                     {_ref, nil, {:selecto_template_source, "orders", 1}, {:ok, completion}}}}
+
+    assert completion["outcome"] == "error"
+    assert completion["error"]["code"] == "effect_execution_failed"
+    refute inspect(completion) =~ "database details"
+
+    assert {:noreply, completed} =
+             TemplateHost.handle_async(
+               {:selecto_template_source, "orders", 1},
+               {:ok, completion},
+               running
+             )
+
+    assert completed.assigns.template_runtime_snapshot["sources"]["orders"]["status"] ==
+             "error"
+  end
+
+  test "an exited older task cannot mark a newer generation as failed" do
+    assert {:ok, mounted} = TemplateHost.mount(socket(), manifest(), mount_opts())
+
+    assert {:ok, dispatched} =
+             TemplateHost.dispatch(
+               mounted,
+               "search_changed",
+               %{"value" => "new"},
+               event_id: "event-live-6"
+             )
+
+    assert {:noreply, returned} =
+             TemplateHost.handle_async(
+               {:selecto_template_source, "orders", 1},
+               {:exit, :timeout},
+               dispatched
+             )
+
+    assert returned.assigns.template_last_observation["outcome"] == "ignored"
+    assert returned.assigns.template_last_observation["code"] == "stale_completion"
+    assert returned.assigns.template_runtime_snapshot["sources"]["orders"]["generation"] == 2
+    assert returned.assigns.template_runtime_snapshot["sources"]["orders"]["status"] == "loading"
+  end
+
   defp manifest, do: @fixture |> File.read!() |> :json.decode()
 
   defp mount_opts do
@@ -115,7 +211,7 @@ defmodule SelectoComponents.TemplateHostTest do
     }
   end
 
-  defp socket do
-    %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}}
+  defp socket(transport_pid \\ nil) do
+    %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}}, transport_pid: transport_pid}
   end
 end
