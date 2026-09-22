@@ -103,6 +103,31 @@ defmodule SelectoComponents.TemplateHost do
   def dispatch(socket, _event_name, _payload, _opts),
     do: assign_error(socket, diagnostic("invalid_host_event", "template host event is invalid"))
 
+  @doc """
+  Normalizes browser parameters through the server-owned event declaration and
+  dispatches the resulting typed payload.
+
+  The parameter map may contain only `"value"`. Event identity, release identity,
+  and revisions remain server or host transport data and cannot be supplied here.
+  """
+  @spec dispatch_params(Phoenix.LiveView.Socket.t(), binary(), map(), keyword()) ::
+          {:ok, Phoenix.LiveView.Socket.t()}
+          | {:error, diagnostic(), Phoenix.LiveView.Socket.t()}
+  def dispatch_params(socket, event_name, params, opts \\ [])
+
+  def dispatch_params(socket, event_name, params, opts)
+      when is_binary(event_name) and is_map(params) and is_list(opts) do
+    with {:ok, manifest, _snapshot} <- runtime(socket),
+         {:ok, payload} <- SelectoComponents.TemplateEvent.normalize(manifest, event_name, params) do
+      dispatch(socket, event_name, payload, opts)
+    else
+      {:error, error} -> assign_error(socket, error)
+    end
+  end
+
+  def dispatch_params(socket, _event_name, _params, _opts),
+    do: assign_error(socket, diagnostic("invalid_host_event", "template host event is invalid"))
+
   @doc "Applies an authorized source completion through the portable reducer."
   @spec complete(Phoenix.LiveView.Socket.t(), map()) ::
           {:ok, Phoenix.LiveView.Socket.t()}
@@ -177,6 +202,41 @@ defmodule SelectoComponents.TemplateHost do
   end
 
   def start_effects(socket, _executor),
+    do:
+      assign_error(
+        socket,
+        diagnostic("invalid_effect_executor", "template effect executor is invalid")
+      )
+
+  @doc """
+  Starts queued source effects with the manifest mounted in this socket.
+
+  The authorization callback receives the server-resolved source plan and the
+  data-only effect. It runs once per effect and must return a fresh, scoped
+  `%Selecto{}`. Executor options remain host-owned and may include database
+  timeout options accepted by `Selecto.execute/2`.
+  """
+  @spec start_source_effects(
+          Phoenix.LiveView.Socket.t(),
+          SelectoComponents.TemplateSourceExecutor.authorize(),
+          keyword()
+        ) ::
+          {:ok, Phoenix.LiveView.Socket.t()}
+          | {:error, diagnostic(), Phoenix.LiveView.Socket.t()}
+  def start_source_effects(socket, authorize, opts \\ [])
+
+  def start_source_effects(socket, authorize, opts)
+      when is_function(authorize, 2) and is_list(opts) do
+    with {:ok, manifest, _snapshot} <- runtime(socket) do
+      start_effects(socket, fn effect ->
+        SelectoComponents.TemplateSourceExecutor.execute(manifest, effect, authorize, opts)
+      end)
+    else
+      {:error, error} -> assign_error(socket, error)
+    end
+  end
+
+  def start_source_effects(socket, _authorize, _opts),
     do:
       assign_error(
         socket,

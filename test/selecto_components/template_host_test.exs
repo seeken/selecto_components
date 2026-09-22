@@ -41,6 +41,31 @@ defmodule SelectoComponents.TemplateHostTest do
     assert effect["bindings"]["state"]["search"] == "PO-100"
   end
 
+  test "dispatch_params converts a browser integer before the reducer sees it" do
+    assert {:ok, mounted} = TemplateHost.mount(socket(), manifest(), mount_opts())
+
+    assert {:ok, dispatched} =
+             TemplateHost.dispatch_params(
+               mounted,
+               "order_selected",
+               %{"value" => "17"},
+               event_id: "event-live-browser-1"
+             )
+
+    assert dispatched.assigns.template_runtime_snapshot["state"]["selected_order_id"] == 17
+
+    assert {:error, error, unchanged} =
+             TemplateHost.dispatch_params(
+               dispatched,
+               "order_selected",
+               %{"value" => "017", "tenant_id" => "9"},
+               event_id: "event-live-browser-2"
+             )
+
+    assert error["code"] == "invalid_event_params"
+    assert unchanged.assigns.template_runtime_snapshot["state_revision"] == 1
+  end
+
   test "stale completions are ignored and current completions update the snapshot" do
     assert {:ok, mounted} = TemplateHost.mount(socket(), manifest(), mount_opts())
 
@@ -156,6 +181,37 @@ defmodule SelectoComponents.TemplateHostTest do
     assert completion["outcome"] == "error"
     assert completion["error"]["code"] == "effect_execution_failed"
     refute inspect(completion) =~ "database details"
+
+    assert {:noreply, completed} =
+             TemplateHost.handle_async(
+               {:selecto_template_source, "orders", 1},
+               {:ok, completion},
+               running
+             )
+
+    assert completed.assigns.template_runtime_snapshot["sources"]["orders"]["status"] ==
+             "error"
+  end
+
+  test "authorized source effects use the manifest mounted in the socket" do
+    assert {:ok, mounted} = TemplateHost.mount(socket(self()), manifest(), mount_opts())
+    parent = self()
+
+    assert {:ok, running} =
+             TemplateHost.start_source_effects(mounted, fn source, effect ->
+               send(parent, {:authorize_source, source["id"], effect["generation"]})
+               {:error, %{private_reason: "must-not-escape"}}
+             end)
+
+    assert_receive {:authorize_source, "orders", 1}
+
+    assert_receive {:phoenix, :async_result,
+                    {:start,
+                     {_ref, nil, {:selecto_template_source, "orders", 1}, {:ok, completion}}}}
+
+    assert completion["outcome"] == "error"
+    assert completion["error"]["code"] == "source_authorization_failed"
+    refute inspect(completion) =~ "must-not-escape"
 
     assert {:noreply, completed} =
              TemplateHost.handle_async(
