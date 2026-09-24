@@ -47,17 +47,18 @@ defmodule SelectoComponents.MixProject do
       {:phoenix_live_view, "~> 1.1.4 or ~> 1.2.0"},
       # {:phoenix_html_helpers, "~> 1.0"},
       ecosystem_dep(:selecto, "selecto",
-        ref: "ba37c6c5274ebfa1355e07ed81c90b199f45753c",
+        ref: "9b2fb39947626e783f18e2b02286615dc667b11a",
         override: true
       ),
       ecosystem_dep(:selecto_templates, "selecto_templates",
-        ref: "34f7e1f7fd623d6fba277b12828654471168c0f8"
+        ref: "c511f61fb28c97fd6d2150abc3c8673350daff13"
       ),
       {:uuid, "~> 1.1"},
       {:ex_doc, "~> 0.29.1", only: :dev, runtime: false},
       # {:vega_lite, "~> 0.1.6"},
       {:tzdata, "~> 1.1"},
       {:jason, "~> 1.2"},
+      {:lazy_html, ">= 0.1.0", only: :test},
       {:esbuild, "~> 0.5", runtime: Mix.env() == :dev},
       {:ecto, ">= 3.9.1 and < 4.0.0"},
       {:makeup, "~> 1.1"},

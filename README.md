@@ -437,6 +437,17 @@ descriptors. It excludes the manifest, socket, repository, database connection, 
 host authorization. The LiveView still derives actor and tenant scope from its trusted
 session and attaches fresh authority whenever it executes a source effect.
 
+For a root source with a supported stable order and no offset-page declaration,
+the host can request its initial read with `root_cursor: :first`. After that
+read completes, `TemplateHost.root_cursor/5` issues an opaque control from the
+current socket snapshot and fresh host scope. On a click, pass only that token
+to `TemplateHost.start_root_page/6`; forward the resulting async completion to
+`TemplateHost.handle_async/3`. The runner reauthorizes before native keyset
+execution and commits the result only if the source generation, state revision,
+root position, and page counter still match. The scope and signing secret stay
+server-side. A connected example is in
+`test/selecto_components/template_root_page_live_test.exs`.
+
 ## Custom View Systems
 
 `selecto_components` supports external view packages through `SelectoComponents.Views.System`.

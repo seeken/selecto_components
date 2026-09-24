@@ -32,6 +32,8 @@ defmodule SelectoComponents.TemplateHost do
   alias SelectoComponents.TemplateEventDispatcher
   alias SelectoComponents.TemplateInstance
   alias SelectoComponents.TemplateNativeModel
+  alias SelectoComponents.TemplatePageRunner
+  alias SelectoComponents.TemplateRootPageRunner
 
   @type diagnostic :: map()
 
@@ -39,7 +41,11 @@ defmodule SelectoComponents.TemplateHost do
           {:ok, Phoenix.LiveView.Socket.t()} | {:error, diagnostic()}
   def mount(socket, manifest, opts) do
     with {:ok, socket} <- TemplateInstance.mount(socket, manifest, opts) do
-      {:ok, TemplateEffectRunner.initialize(socket)}
+      {:ok,
+       socket
+       |> TemplateEffectRunner.initialize()
+       |> TemplatePageRunner.initialize()
+       |> TemplateRootPageRunner.initialize()}
     end
   end
 
@@ -65,15 +71,35 @@ defmodule SelectoComponents.TemplateHost do
           | {:error, diagnostic(), Phoenix.LiveView.Socket.t()}
   defdelegate complete(socket, completion), to: TemplateInstance
 
+  @doc "Applies a host-validated page result against the expected ready source version."
+  @spec commit_page(Phoenix.LiveView.Socket.t(), map()) ::
+          {:ok, Phoenix.LiveView.Socket.t()}
+          | {:error, diagnostic(), Phoenix.LiveView.Socket.t()}
+  defdelegate commit_page(socket, commit), to: TemplateInstance
+
+  @doc "Applies a trusted root-page result against its original ready snapshot."
+  defdelegate commit_root_page(socket, commit), to: TemplateInstance
+
   @doc "Returns queued effects and clears them from the socket."
   @spec take_effects(Phoenix.LiveView.Socket.t()) :: {[map()], Phoenix.LiveView.Socket.t()}
   defdelegate take_effects(socket), to: TemplateInstance
 
-  @doc "Starts queued data-only effects on a connected LiveView."
-  @spec start_effects(Phoenix.LiveView.Socket.t(), (map() -> {:ok, term()} | {:error, term()})) ::
+  @doc """
+  Starts queued data-only effects on a connected LiveView.
+
+  A host can set `:source_timeout_ms` and `:max_concurrent_effects` in `opts`.
+  Defaults are 15 seconds and four running effects per template instance.
+  Effects above the concurrent limit receive a bounded error completion.
+  """
+  @spec start_effects(
+          Phoenix.LiveView.Socket.t(),
+          (map() -> {:ok, term()} | {:error, term()}),
+          keyword()
+        ) ::
           {:ok, Phoenix.LiveView.Socket.t()}
           | {:error, diagnostic(), Phoenix.LiveView.Socket.t()}
   defdelegate start_effects(socket, executor), to: TemplateEffectRunner
+  defdelegate start_effects(socket, executor, opts), to: TemplateEffectRunner
 
   @doc "Starts queued source effects with fresh host authorization."
   @spec start_source_effects(
@@ -90,7 +116,33 @@ defmodule SelectoComponents.TemplateHost do
   @doc "Handles a completion delivered by `Phoenix.LiveView.start_async/3`."
   @spec handle_async(term(), {:ok, map()} | {:exit, term()}, Phoenix.LiveView.Socket.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
-  defdelegate handle_async(name, result, socket), to: TemplateEffectRunner
+  def handle_async({:selecto_template_page, _, _, _, _} = name, result, socket),
+    do: TemplatePageRunner.handle_async(name, result, socket)
+
+  def handle_async({:selecto_template_root_page, _, _, _, _} = name, result, socket),
+    do: TemplateRootPageRunner.handle_async(name, result, socket)
+
+  def handle_async(name, result, socket),
+    do: TemplateEffectRunner.handle_async(name, result, socket)
+
+  @doc "Issues opaque controls for a ready paged source using fresh host scope."
+  defdelegate page_cursors(socket, source_id, scope, secret), to: TemplatePageRunner, as: :cursors
+
+  defdelegate page_cursors(socket, source_id, scope, secret, opts),
+    to: TemplatePageRunner,
+    as: :cursors
+
+  @doc "Runs one browser-supplied opaque page token asynchronously through fresh authority."
+  def start_page(socket, source_id, token, authorize, secret, opts \\ []),
+    do: TemplatePageRunner.start(socket, source_id, token, authorize, secret, opts)
+
+  @doc "Issues the current root continuation control under fresh host scope."
+  def root_cursor(socket, source_id, scope, secret, opts \\ []),
+    do: TemplateRootPageRunner.cursor(socket, source_id, scope, secret, opts)
+
+  @doc "Runs an opaque root continuation with fresh source authorization."
+  def start_root_page(socket, source_id, token, authorize, secret, opts \\ []),
+    do: TemplateRootPageRunner.start(socket, source_id, token, authorize, secret, opts)
 
   @doc "Builds an HTML-free model for trusted native HEEx authoring."
   @spec native_model(Phoenix.LiveView.Socket.t()) :: {:ok, map()} | {:error, diagnostic()}

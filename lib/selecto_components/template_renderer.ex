@@ -23,6 +23,8 @@ defmodule SelectoComponents.TemplateRenderer do
 
   alias Phoenix.HTML.Safe
 
+  @url_attributes ~w(href src poster action formaction xlink:href)
+
   attr(:manifest, :map, required: true)
   attr(:snapshot, :map, required: true)
   attr(:registry, :map, required: true)
@@ -48,20 +50,35 @@ defmodule SelectoComponents.TemplateRenderer do
 
   @doc "Renders a compiled view to a Phoenix safe value without performing I/O."
   @spec render(map(), map(), map()) :: {:ok, Phoenix.HTML.safe()} | {:error, map()}
+  def render(manifest, snapshot, registry), do: render(manifest, snapshot, registry, %{})
+
+  @spec render(map(), map(), map(), map()) :: {:ok, Phoenix.HTML.safe()} | {:error, map()}
   def render(
-        %{"view" => %{"schema" => "selecto.template.view.v1", "nodes" => nodes}},
+        %{"view" => %{"schema" => "selecto.template.view.v1", "nodes" => nodes}} = manifest,
         snapshot,
-        registry
+        registry,
+        slots
       )
-      when is_list(nodes) and is_map(snapshot) and is_map(registry) do
-    with {:ok, context} <- render_context(snapshot),
-         {:ok, content} <- render_nodes(nodes, context, registry) do
+      when is_list(nodes) and is_map(snapshot) and is_map(registry) and is_map(slots) do
+    with {:ok, context} <- render_context(snapshot, manifest),
+         :ok <- validate_slots(slots),
+         {:ok, content} <- render_nodes(nodes, Map.put(context, :slots, slots), registry) do
       {:ok, content}
     end
   end
 
-  def render(_manifest, _snapshot, _registry),
+  def render(_manifest, _snapshot, _registry, _slots),
     do: {:error, diagnostic("invalid_render_input", "template render input is invalid", [])}
+
+  defp validate_slots(slots) do
+    if Enum.all?(slots, fn {name, value} ->
+         is_binary(name) and match?({:safe, _}, value)
+       end) do
+      :ok
+    else
+      {:error, diagnostic("invalid_render_input", "template slots are invalid", [])}
+    end
+  end
 
   defp render_nodes(nodes, context, registry) do
     Enum.reduce_while(nodes, {:ok, []}, fn node, {:ok, chunks} ->
@@ -113,6 +130,7 @@ defmodule SelectoComponents.TemplateRenderer do
               is_list(children) do
     with {:ok, renderer} <- registry_renderer(registry, :components, name, node_id),
          {:ok, resolved_props} <- resolve_values(props, context, node_id),
+         :ok <- validate_component_urls(resolved_props, registry, name, node_id),
          {:ok, rendered_children} <- render_nodes(children, context, registry) do
       invoke_renderer(
         renderer,
@@ -143,6 +161,7 @@ defmodule SelectoComponents.TemplateRenderer do
        when is_binary(node_id) and is_binary(name) and is_map(attributes) and is_list(children) do
     with {:ok, renderer} <- registry_renderer(registry, :elements, name, node_id),
          {:ok, resolved_attributes} <- resolve_values(attributes, context, node_id),
+         :ok <- validate_url_attributes(resolved_attributes, node_id),
          {:ok, rendered_children} <- render_nodes(children, context, registry) do
       invoke_renderer(
         renderer,
@@ -185,28 +204,31 @@ defmodule SelectoComponents.TemplateRenderer do
   end
 
   defp render_node(
+         %{"kind" => "slot", "node_id" => node_id, "name" => name, "children" => children},
+         context,
+         registry
+       )
+       when is_binary(node_id) and is_binary(name) and is_list(children) do
+    case Map.fetch(context.slots, name) do
+      {:ok, content} -> {:ok, content}
+      :error -> render_nodes(children, context, registry)
+    end
+  end
+
+  defp render_node(
          %{
            "kind" => "include",
            "node_id" => node_id,
            "template" => template,
            "bindings" => bindings
-         },
+         } = node,
          context,
          registry
        )
        when is_binary(node_id) and is_binary(template) and is_map(bindings) do
     with {:ok, renderer} <- include_renderer(registry, node_id),
-         {:ok, resolved_bindings} <- resolve_values(bindings, context, node_id) do
-      invoke_renderer(
-        renderer,
-        %{
-          node_id: node_id,
-          dom_id: dom_id(context.instance_id, node_id),
-          template: template,
-          bindings: resolved_bindings
-        },
-        node_id
-      )
+         {:ok, slots} <- render_slots(Map.get(node, "slots", %{}), context, registry, node_id) do
+      render_include(renderer, node_id, template, bindings, slots, context)
     end
   end
 
@@ -215,24 +237,217 @@ defmodule SelectoComponents.TemplateRenderer do
     {:error, diagnostic("invalid_render_node", "compiled render node is invalid", node_id)}
   end
 
-  defp render_context(%{
-         "instance_id" => instance_id,
-         "inputs" => inputs,
-         "state" => state,
-         "sources" => sources
-       })
+  defp render_slots(slots, context, registry, node_id) when is_map(slots) do
+    Enum.reduce_while(slots, {:ok, %{}}, fn {name, nodes}, {:ok, rendered} ->
+      if is_binary(name) and is_list(nodes) do
+        case render_nodes(nodes, context, registry) do
+          {:ok, content} -> {:cont, {:ok, Map.put(rendered, name, content)}}
+          {:error, error} -> {:halt, {:error, error}}
+        end
+      else
+        {:halt,
+         {:error, diagnostic("invalid_render_node", "compiled slots are invalid", node_id)}}
+      end
+    end)
+  end
+
+  defp render_slots(_slots, _context, _registry, node_id),
+    do: {:error, diagnostic("invalid_render_node", "compiled slots are invalid", node_id)}
+
+  defp render_include(renderer, node_id, template, bindings, slots, context) do
+    source_bindings =
+      Enum.filter(bindings, fn {_name, value} ->
+        match?(%{"kind" => "binding", "type" => "source"}, value)
+      end)
+
+    case source_bindings do
+      [] ->
+        with {:ok, resolved} <- resolve_values(bindings, context, node_id) do
+          invoke_include(renderer, node_id, template, resolved, slots, context)
+        end
+
+      _ ->
+        render_source_include(
+          renderer,
+          node_id,
+          template,
+          bindings,
+          source_bindings,
+          slots,
+          context
+        )
+    end
+  end
+
+  defp render_source_include(
+         renderer,
+         node_id,
+         template,
+         bindings,
+         source_bindings,
+         slots,
+         context
+       ) do
+    with {:ok, source, relationships} <- source_relationships(source_bindings, context, node_id),
+         {:ok, fixed} <-
+           resolve_values(
+             Map.drop(bindings, Enum.map(source_bindings, &elem(&1, 0))),
+             context,
+             node_id
+           ),
+         {:ok, rows} <- source_rows(context.sources[source], node_id) do
+      Enum.with_index(rows)
+      |> Enum.reduce_while({:ok, []}, fn {row, index}, {:ok, chunks} ->
+        with {:ok, resolved} <- row_relationships(row, relationships, fixed, node_id),
+             item_id = "#{node_id}.row.#{index}",
+             {:ok, {:safe, content}} <-
+               invoke_include(renderer, item_id, template, resolved, slots, context) do
+          {:cont, {:ok, [chunks, content]}}
+        else
+          {:error, error} -> {:halt, {:error, error}}
+        end
+      end)
+      |> case do
+        {:ok, content} -> {:ok, {:safe, content}}
+        error -> error
+      end
+    end
+  end
+
+  defp source_relationships(bindings, context, node_id) do
+    relationships =
+      Enum.map(bindings, fn {name, value} ->
+        case value do
+          %{"expression" => expression} when is_binary(expression) ->
+            case String.split(expression, ".") do
+              [source] ->
+                {name, source, nil}
+
+              [source, relationship] when relationship != "rows" ->
+                {name, source, relationship}
+
+              _ ->
+                :invalid
+            end
+
+          _ ->
+            :invalid
+        end
+      end)
+
+    sources =
+      Enum.map(relationships, fn
+        {_name, source, _relationship} -> source
+        :invalid -> nil
+      end)
+
+    case Enum.uniq(sources) do
+      [source] when is_binary(source) and is_map_key(context.sources, source) ->
+        {:ok, source,
+         Enum.map(relationships, fn {name, _, relationship} -> {name, relationship} end)}
+
+      _ ->
+        {:error,
+         diagnostic("render_type_mismatch", "include source bindings are incompatible", node_id)}
+    end
+  end
+
+  defp source_rows(nil, _node_id), do: {:ok, []}
+  defp source_rows(rows, _node_id) when is_list(rows), do: {:ok, rows}
+
+  defp source_rows(_rows, node_id),
+    do: {:error, diagnostic("render_type_mismatch", "include source rows are invalid", node_id)}
+
+  defp row_relationships(row, relationships, fixed, node_id) when is_map(row) do
+    Enum.reduce_while(relationships, {:ok, fixed}, fn {name, relationship}, {:ok, acc} ->
+      value = if is_nil(relationship), do: row, else: row[relationship]
+
+      if is_nil(value) or is_map(value) do
+        {:cont, {:ok, Map.put(acc, name, value)}}
+      else
+        {:halt,
+         {:error,
+          diagnostic("render_type_mismatch", "include relationship is not an object", node_id)}}
+      end
+    end)
+  end
+
+  defp row_relationships(_row, _relationships, _fixed, node_id),
+    do: {:error, diagnostic("render_type_mismatch", "include source row is invalid", node_id)}
+
+  defp invoke_include(renderer, node_id, template, bindings, slots, context) do
+    assigns = %{
+      node_id: node_id,
+      dom_id: dom_id(context.instance_id, node_id),
+      template: template,
+      bindings: bindings
+    }
+
+    assigns = if slots == %{}, do: assigns, else: Map.put(assigns, :slots, slots)
+
+    invoke_renderer(
+      renderer,
+      assigns,
+      node_id
+    )
+  end
+
+  defp render_context(
+         %{
+           "instance_id" => instance_id,
+           "inputs" => inputs,
+           "state" => state,
+           "sources" => sources
+         },
+         manifest
+       )
        when is_binary(instance_id) and instance_id != "" and is_map(inputs) and is_map(state) and
               is_map(sources) do
     source_results =
       Map.new(sources, fn {name, source} ->
-        {name, if(is_map(source), do: source["result"], else: nil)}
+        result = if is_map(source), do: source["result"], else: nil
+        {name, public_rows(result)}
       end)
 
-    {:ok, %{instance_id: instance_id, inputs: inputs, state: state, sources: source_results}}
+    source_totals =
+      Map.new(sources, fn {name, source} ->
+        result = if is_map(source), do: source["result"], else: nil
+        {name, if(is_map(result), do: result["totals"], else: nil)}
+      end)
+
+    source_ready =
+      Map.new(sources, fn {name, source} ->
+        {name, is_map(source) and source["status"] == "ready"}
+      end)
+
+    source_page_sizes =
+      Map.new(manifest["sources"] || [], fn source ->
+        {source["id"], get_in(source, ["query", "limit"])}
+      end)
+
+    {:ok,
+     %{
+       instance_id: instance_id,
+       inputs: inputs,
+       state: state,
+       sources: source_results,
+       source_totals: source_totals,
+       source_ready: source_ready,
+       source_page_sizes: source_page_sizes
+     }}
   end
 
-  defp render_context(_snapshot),
+  defp render_context(_snapshot, _manifest),
     do: {:error, diagnostic("invalid_render_snapshot", "template snapshot is invalid", [])}
+
+  defp public_rows(%{"rows" => rows} = result) when is_list(rows) do
+    if Map.has_key?(result, "pages") and not is_list(result["pages"]),
+      do: nil,
+      else: rows
+  end
+
+  defp public_rows(rows) when is_list(rows), do: rows
+  defp public_rows(_result), do: nil
 
   defp resolve_values(values, context, node_id) do
     Enum.reduce_while(values, {:ok, %{}}, fn {name, value}, {:ok, resolved} ->
@@ -301,6 +516,24 @@ defmodule SelectoComponents.TemplateRenderer do
     case String.split(expression, ".") do
       [source, "rows"] when is_map_key(context.sources, source) ->
         {:ok, context.sources[source]}
+
+      [source, "ready"] when is_map_key(context.source_ready, source) ->
+        {:ok, context.source_ready[source]}
+
+      [source, "page_size"] when is_map_key(context.source_page_sizes, source) ->
+        case context.source_page_sizes[source] do
+          size when is_integer(size) and size > 0 -> {:ok, size}
+          _other -> unsupported_expression(node_id)
+        end
+
+      [source, "totals", total] when is_map_key(context.source_totals, source) ->
+        totals = context.source_totals[source]
+
+        cond do
+          is_map(totals) and Map.has_key?(totals, total) -> {:ok, totals[total]}
+          context.source_ready[source] -> unsupported_expression(node_id)
+          true -> {:ok, nil}
+        end
 
       [input | path] when path != [] and is_map_key(context.inputs, input) ->
         {:ok, resolve_path(context.inputs[input], path)}
@@ -374,6 +607,81 @@ defmodule SelectoComponents.TemplateRenderer do
     do: {:error, diagnostic("invalid_display_value", "render expression is not scalar", node_id)}
 
   defp escaped_iodata(value), do: value |> Phoenix.HTML.html_escape() |> Safe.to_iodata()
+
+  defp validate_component_urls(props, registry, component, node_id) do
+    case Map.get(registry, :url_props) do
+      nil ->
+        :ok
+
+      policies when is_map(policies) ->
+        validate_component_url_policy(props, Map.get(policies, component), node_id)
+
+      _ ->
+        {:error, diagnostic("invalid_render_input", "component URL policy is invalid", node_id)}
+    end
+  end
+
+  defp validate_component_url_policy(_props, nil, _node_id), do: :ok
+
+  defp validate_component_url_policy(props, policy, node_id) when is_map(policy) do
+    if Enum.all?(policy, fn
+         {prop, attribute} when is_binary(prop) and attribute in @url_attributes ->
+           not Map.has_key?(props, prop) or valid_url?(attribute, props[prop])
+
+         _ ->
+           false
+       end) do
+      :ok
+    else
+      {:error, diagnostic("invalid_url_attribute", "component URL prop is invalid", node_id)}
+    end
+  end
+
+  defp validate_component_url_policy(_props, _policy, node_id),
+    do: {:error, diagnostic("invalid_render_input", "component URL policy is invalid", node_id)}
+
+  defp validate_url_attributes(attributes, node_id) do
+    if Enum.all?(attributes, fn
+         {name, value} when name in @url_attributes -> valid_url?(name, value)
+         _ -> true
+       end) do
+      :ok
+    else
+      {:error, diagnostic("invalid_url_attribute", "element URL attribute is invalid", node_id)}
+    end
+  end
+
+  defp valid_url?(_name, nil), do: true
+
+  defp valid_url?(name, value) when is_binary(value) do
+    String.valid?(value) and byte_size(value) in 1..2048 and
+      not Enum.any?(String.to_charlist(value), &(&1 <= 32 or &1 in [92, 127])) and
+      (root_relative_url?(value) or
+         (name in ["href", "xlink:href"] and
+            (String.starts_with?(value, ["#", "?"]) and byte_size(value) > 1)) or
+         (name == "href" and
+            (nonempty_scheme?(value, "mailto:") or nonempty_scheme?(value, "tel:"))) or
+         (name in ["href", "xlink:href", "src", "poster"] and web_url?(value)))
+  end
+
+  defp valid_url?(_name, _value), do: false
+
+  defp root_relative_url?(value),
+    do: String.starts_with?(value, "/") and not String.starts_with?(value, "//")
+
+  defp nonempty_scheme?(value, prefix),
+    do: String.starts_with?(value, prefix) and byte_size(value) > byte_size(prefix)
+
+  defp web_url?(value) do
+    case Regex.run(~r/\Ahttps?:\/\/([^\/?#]+)(?:[\/?#].*)?\z/u, value, capture: :all_but_first) do
+      [authority] ->
+        not String.contains?(authority, "@") and
+          Regex.match?(~r/\A(?:[A-Za-z0-9]|\[)[A-Za-z0-9.:\-\[\]]*\z/, authority)
+
+      _ ->
+        false
+    end
+  end
 
   defp value_matches_type?(_value, "any"), do: true
   defp value_matches_type?(value, "boolean"), do: is_boolean(value)

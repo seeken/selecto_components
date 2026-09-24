@@ -24,7 +24,7 @@ defmodule SelectoComponents.TemplateNativeModel do
           "template" => %{"name" => name, "version" => version},
           "events" => events,
           "view" => %{"schema" => "selecto.template.view.v1", "nodes" => nodes}
-        },
+        } = manifest,
         %{
           "instance_id" => instance_id,
           "release_id" => release_id,
@@ -40,7 +40,7 @@ defmodule SelectoComponents.TemplateNativeModel do
              is_map(state) and is_map(sources) do
     with {:ok, event_types} <- event_types(events),
          {:ok, event_forms} <- event_forms(nodes, event_types),
-         {:ok, source_models} <- source_models(sources) do
+         {:ok, source_models} <- source_models(sources, Map.get(manifest, "sources", [])) do
       {:ok,
        %{
          "schema" => @schema,
@@ -155,21 +155,28 @@ defmodule SelectoComponents.TemplateNativeModel do
     end)
   end
 
-  defp source_models(sources) do
+  defp source_models(sources, declarations) when is_list(declarations) do
+    page_sizes = Map.new(declarations, &{&1["id"], get_in(&1, ["query", "limit"])})
+
     Enum.reduce_while(sources, {:ok, %{}}, fn
       {source_id, %{"status" => status, "generation" => generation} = source}, {:ok, models}
       when is_binary(source_id) and is_binary(status) and is_integer(generation) and
-             generation >= 1 ->
-        with :ok <- valid_optional?(source["result"], &is_list/1),
+             generation >= 0 ->
+        with :ok <- valid_source_lifecycle(source),
+             {:ok, rows} <- public_rows(source["result"]),
+             {:ok, totals} <- public_totals(source["result"]),
+             :ok <- valid_optional?(page_sizes[source_id], &(is_integer(&1) and &1 > 0)),
              :ok <- valid_optional?(source["error"], &is_map/1) do
           model =
             %{"status" => status, "generation" => generation}
-            |> maybe_put("rows", source["result"])
+            |> maybe_put("rows", rows)
+            |> maybe_put("totals", totals)
+            |> maybe_put("page_size", page_sizes[source_id])
             |> maybe_put("error", source["error"])
 
           {:cont, {:ok, Map.put(models, source_id, model)}}
         else
-          :error ->
+          _error ->
             {:halt,
              {:error, diagnostic("invalid_native_sources", "native template sources are invalid")}}
         end
@@ -180,8 +187,62 @@ defmodule SelectoComponents.TemplateNativeModel do
     end)
   end
 
+  defp valid_source_lifecycle(%{
+         "status" => "idle",
+         "generation" => 0,
+         "result" => nil,
+         "error" => nil
+       }),
+       do: :ok
+
+  defp valid_source_lifecycle(%{"status" => status, "generation" => generation})
+       when status in ["loading", "ready", "error"] and generation >= 1,
+       do: :ok
+
+  defp valid_source_lifecycle(_), do: :error
+
   defp valid_optional?(nil, _valid?), do: :ok
   defp valid_optional?(value, valid?), do: if(valid?.(value), do: :ok, else: :error)
+
+  defp public_rows(nil), do: {:ok, nil}
+  defp public_rows(rows) when is_list(rows), do: {:ok, rows}
+
+  defp public_rows(%{"rows" => rows} = result) when is_list(rows) do
+    if Map.has_key?(result, "pages") and not is_list(result["pages"]),
+      do: :error,
+      else: {:ok, rows}
+  end
+
+  defp public_rows(_result), do: :error
+
+  defp public_totals(nil), do: {:ok, nil}
+  defp public_totals(rows) when is_list(rows), do: {:ok, nil}
+
+  defp public_totals(%{} = result) do
+    case Map.fetch(result, "totals") do
+      :error ->
+        {:ok, nil}
+
+      {:ok, totals} when is_map(totals) ->
+        if Enum.all?(totals, fn {name, value} ->
+             is_binary(name) and name != "" and valid_total_value?(value)
+           end),
+           do: {:ok, totals},
+           else: :error
+
+      _ ->
+        :error
+    end
+  end
+
+  defp public_totals(_result), do: :error
+
+  defp valid_total_value?(value) when is_integer(value), do: value >= 0
+
+  defp valid_total_value?(value) when is_binary(value),
+    do: Regex.match?(~r/\A-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?\z/, value)
+
+  defp valid_total_value?(_value), do: false
 
   defp maybe_put(model, _key, nil), do: model
   defp maybe_put(model, key, value), do: Map.put(model, key, value)

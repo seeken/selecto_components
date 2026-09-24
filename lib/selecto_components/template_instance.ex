@@ -69,6 +69,39 @@ defmodule SelectoComponents.TemplateInstance do
         diagnostic("invalid_host_completion", "template host completion is invalid")
       )
 
+  @spec commit_page(Phoenix.LiveView.Socket.t(), map()) ::
+          {:ok, Phoenix.LiveView.Socket.t()}
+          | {:error, diagnostic(), Phoenix.LiveView.Socket.t()}
+  def commit_page(socket, commit) when is_map(commit) do
+    with {:ok, manifest, snapshot} <- runtime(socket) do
+      reduce(socket, fn ->
+        SelectoTemplates.commit_page_runtime(manifest, snapshot, commit)
+      end)
+    else
+      {:error, error} -> assign_error(socket, error)
+    end
+  end
+
+  def commit_page(socket, _commit),
+    do: assign_error(socket, diagnostic("invalid_page_commit", "page commit is invalid"))
+
+  @spec commit_root_page(Phoenix.LiveView.Socket.t(), map()) ::
+          {:ok, Phoenix.LiveView.Socket.t()}
+          | {:error, diagnostic(), Phoenix.LiveView.Socket.t()}
+  def commit_root_page(socket, commit) when is_map(commit) do
+    with {:ok, manifest, snapshot} <- runtime(socket) do
+      reduce(socket, fn ->
+        SelectoTemplates.commit_root_page_runtime(manifest, snapshot, commit)
+      end)
+    else
+      {:error, error} -> assign_error(socket, error)
+    end
+  end
+
+  def commit_root_page(socket, _commit),
+    do:
+      assign_error(socket, diagnostic("invalid_root_page_commit", "root page commit is invalid"))
+
   @spec take_effects(Phoenix.LiveView.Socket.t()) :: {[map()], Phoenix.LiveView.Socket.t()}
   def take_effects(socket) do
     effects = Map.get(socket.assigns, @effects_assign, [])

@@ -6,19 +6,29 @@ defmodule SelectoComponents.TemplateEffectRunner do
   import Phoenix.LiveView, only: [cancel_async: 2, connected?: 1, start_async: 3]
 
   @running_assign :template_running_effects
+  @default_source_timeout_ms 15_000
+  @default_max_concurrent_effects 4
 
   @type diagnostic :: map()
 
   @spec initialize(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
   def initialize(socket), do: Component.assign(socket, @running_assign, %{})
 
-  @spec start_effects(Phoenix.LiveView.Socket.t(), (map() -> {:ok, term()} | {:error, term()})) ::
+  @spec start_effects(
+          Phoenix.LiveView.Socket.t(),
+          (map() -> {:ok, term()} | {:error, term()}),
+          keyword()
+        ) ::
           {:ok, Phoenix.LiveView.Socket.t()}
           | {:error, diagnostic(), Phoenix.LiveView.Socket.t()}
-  def start_effects(socket, executor) when is_function(executor, 1) do
+  def start_effects(socket, executor, opts \\ [])
+
+  def start_effects(socket, executor, opts)
+      when is_function(executor, 1) and is_list(opts) do
     if connected?(socket) do
       with {:ok, _manifest, snapshot} <- TemplateInstance.runtime(socket),
-           :ok <- valid_effects(Map.get(socket.assigns, :template_pending_effects, [])) do
+           :ok <- valid_effects(Map.get(socket.assigns, :template_pending_effects, [])),
+           {:ok, timeout_ms, max_concurrent} <- runner_limits(opts) do
         identity = Map.take(snapshot, ["instance_id", "release_id"])
         {effects, socket} = TemplateInstance.take_effects(socket)
 
@@ -28,11 +38,18 @@ defmodule SelectoComponents.TemplateEffectRunner do
             key = async_key(source, effect["generation"])
             running = Map.get(current.assigns, @running_assign, %{})
             previous_key = Map.get(running, source)
+            current = maybe_cancel_async(current, previous_key)
+            running = Map.delete(running, source)
 
-            current
-            |> maybe_cancel_async(previous_key)
-            |> start_async(key, fn -> execute_effect(identity, effect, executor) end)
-            |> Component.assign(@running_assign, Map.put(running, source, key))
+            if map_size(running) >= max_concurrent do
+              current
+              |> Component.assign(@running_assign, running)
+              |> reject_busy_effect(identity, effect)
+            else
+              current
+              |> start_async(key, fn -> execute_effect(identity, effect, executor, timeout_ms) end)
+              |> Component.assign(@running_assign, Map.put(running, source, key))
+            end
           end)
 
         {:ok, socket}
@@ -44,7 +61,7 @@ defmodule SelectoComponents.TemplateEffectRunner do
     end
   end
 
-  def start_effects(socket, _executor) do
+  def start_effects(socket, _executor, _opts) do
     TemplateInstance.assign_error(
       socket,
       TemplateInstance.diagnostic(
@@ -66,9 +83,13 @@ defmodule SelectoComponents.TemplateEffectRunner do
   def start_source_effects(socket, authorize, opts)
       when is_function(authorize, 2) and is_list(opts) do
     with {:ok, manifest, _snapshot} <- TemplateInstance.runtime(socket) do
-      start_effects(socket, fn effect ->
-        SelectoComponents.TemplateSourceExecutor.execute(manifest, effect, authorize, opts)
-      end)
+      start_effects(
+        socket,
+        fn effect ->
+          SelectoComponents.TemplateSourceExecutor.execute(manifest, effect, authorize, opts)
+        end,
+        opts
+      )
     else
       {:error, error} -> TemplateInstance.assign_error(socket, error)
     end
@@ -151,19 +172,52 @@ defmodule SelectoComponents.TemplateEffectRunner do
 
   defp valid_effect?(_effect), do: false
 
-  defp execute_effect(identity, effect, executor) do
+  defp runner_limits(opts) do
+    timeout_ms = Keyword.get(opts, :source_timeout_ms, @default_source_timeout_ms)
+    max_concurrent = Keyword.get(opts, :max_concurrent_effects, @default_max_concurrent_effects)
+
+    if is_integer(timeout_ms) and timeout_ms > 0 and timeout_ms <= 300_000 and
+         is_integer(max_concurrent) and max_concurrent > 0 and max_concurrent <= 64 do
+      {:ok, timeout_ms, max_concurrent}
+    else
+      {:error,
+       TemplateInstance.diagnostic("invalid_effect_budget", "host effect budget is invalid")}
+    end
+  end
+
+  defp reject_busy_effect(socket, identity, effect) do
+    error = %{
+      "code" => "source_workers_busy",
+      "message" => "template source workers are busy"
+    }
+
+    case TemplateInstance.complete(socket, completion(identity, effect, {:error, error})) do
+      {:ok, completed} ->
+        completed
+
+      {:error, diagnostic, returned} ->
+        elem(TemplateInstance.assign_error(returned, diagnostic), 2)
+    end
+  end
+
+  defp execute_effect(identity, effect, executor, timeout_ms) do
+    task = Task.async(fn -> safely_execute_effect(effect, executor) end)
+
     result =
-      try do
-        executor.(effect)
-      rescue
-        _exception ->
+      case Task.yield(task, timeout_ms) do
+        {:ok, result} ->
+          result
+
+        nil ->
+          Task.shutdown(task, :brutal_kill)
+
           {:error,
            %{
-             "code" => "effect_execution_failed",
-             "message" => "template source execution failed"
+             "code" => "source_timeout",
+             "message" => "template source execution timed out"
            }}
-      catch
-        _kind, _reason ->
+
+        {:exit, _reason} ->
           {:error,
            %{
              "code" => "effect_execution_failed",
@@ -172,6 +226,26 @@ defmodule SelectoComponents.TemplateEffectRunner do
       end
 
     completion(identity, effect, result)
+  end
+
+  defp safely_execute_effect(effect, executor) do
+    try do
+      executor.(effect)
+    rescue
+      _exception ->
+        {:error,
+         %{
+           "code" => "effect_execution_failed",
+           "message" => "template source execution failed"
+         }}
+    catch
+      _kind, _reason ->
+        {:error,
+         %{
+           "code" => "effect_execution_failed",
+           "message" => "template source execution failed"
+         }}
+    end
   end
 
   defp completion(identity, effect, {:ok, result}) do
