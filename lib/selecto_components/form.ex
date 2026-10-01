@@ -2045,22 +2045,14 @@ defmodule SelectoComponents.Form do
   end
 
   # Environment detection helpers
+  #
+  # Detailed errors are shown only in a known development or test
+  # environment. An unset MIX_ENV (the usual release) or an unrecognized
+  # value is treated as production, following `SelectoComponents.Env`.
   def dev_mode? do
-    # Check if we're in dev or test environment
-    # You can also use Mix.env() if available, or Application.get_env
     case Application.get_env(:selecto_components, :environment) do
-      nil ->
-        # Fall back to checking common indicators
-        System.get_env("MIX_ENV") in ["dev", "test", nil]
-
-      :prod ->
-        false
-
-      :production ->
-        false
-
-      _ ->
-        true
+      nil -> SelectoComponents.Env.dev_or_test?()
+      env -> env in [:dev, :test, :development, "dev", "test", "development"]
     end
   end
 

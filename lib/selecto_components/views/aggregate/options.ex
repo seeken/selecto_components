@@ -4,12 +4,27 @@ defmodule SelectoComponents.Views.Aggregate.Options do
   @per_page_options [30, 100, 200, 300, "all"]
   @default_per_page "100"
   @default_max_client_rows 10_000
+  @default_max_rows_cap 100_000
   @grid_color_scale_modes ["linear", "log"]
   @default_grid_color_scale_mode "linear"
 
   def per_page_options, do: @per_page_options
   def default_per_page, do: @default_per_page
   def default_max_client_rows, do: @default_max_client_rows
+
+  @doc """
+  Largest number of aggregate rows one query may fetch, including
+  `aggregate_per_page: "all"`.
+
+  Configure with `config :selecto_components, :aggregate_max_rows_cap, 100_000`.
+  """
+  def max_rows_cap do
+    case Application.get_env(:selecto_components, :aggregate_max_rows_cap, @default_max_rows_cap) do
+      value when is_integer(value) and value > 0 -> value
+      _value -> @default_max_rows_cap
+    end
+  end
+
   def grid_color_scale_modes, do: @grid_color_scale_modes
   def default_grid_color_scale_mode, do: @default_grid_color_scale_mode
 
@@ -73,7 +88,10 @@ defmodule SelectoComponents.Views.Aggregate.Options do
 
   def normalize_grid_color_scale_mode(_value), do: @default_grid_color_scale_mode
 
-  def per_page_to_int("all", total_rows), do: max(total_rows, 1)
+  def per_page_to_int("all", total_rows) when is_integer(total_rows),
+    do: total_rows |> max(1) |> min(max_rows_cap())
+
+  def per_page_to_int("all", _total_rows), do: max_rows_cap()
 
   def per_page_to_int(per_page, _total_rows) when is_binary(per_page) do
     case Integer.parse(per_page) do

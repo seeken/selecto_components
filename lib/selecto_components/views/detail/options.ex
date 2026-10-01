@@ -3,6 +3,8 @@ defmodule SelectoComponents.Views.Detail.Options do
 
   @max_rows_options ~w(100 1000 10000 all)
   @default_max_rows "1000"
+  @default_max_per_page 1_000
+  @default_max_rows_cap 100_000
   @count_mode_options ~w(exact bounded none)
   @default_count_mode "bounded"
 
@@ -10,6 +12,25 @@ defmodule SelectoComponents.Views.Detail.Options do
   def default_max_rows, do: @default_max_rows
   def count_mode_options, do: @count_mode_options
   def default_count_mode, do: @default_count_mode
+
+  @doc """
+  Largest detail page size a request may ask for.
+
+  Configure with `config :selecto_components, :detail_max_per_page, 1_000`.
+  """
+  def max_per_page, do: positive_config(:detail_max_per_page, @default_max_per_page)
+
+  @doc """
+  Largest number of detail rows a query may reach, including `max_rows: "all"`.
+
+  Configure with `config :selecto_components, :detail_max_rows_cap, 100_000`.
+  """
+  def max_rows_cap, do: positive_config(:detail_max_rows_cap, @default_max_rows_cap)
+
+  def cap_per_page(per_page) when is_integer(per_page),
+    do: per_page |> max(1) |> min(max_per_page())
+
+  def cap_per_page(_per_page), do: min(30, max_per_page())
 
   def normalize_max_rows_param(value) when is_binary(value) do
     normalized = value |> String.trim() |> String.downcase()
@@ -60,12 +81,12 @@ defmodule SelectoComponents.Views.Detail.Options do
   def normalize_max_rows_limit(value) do
     case normalize_max_rows_param(value) do
       "all" ->
-        nil
+        max_rows_cap()
 
       normalized ->
         case Integer.parse(normalized) do
-          {limit, ""} when limit > 0 -> limit
-          _ -> String.to_integer(@default_max_rows)
+          {limit, ""} when limit > 0 -> min(limit, max_rows_cap())
+          _ -> min(String.to_integer(@default_max_rows), max_rows_cap())
         end
     end
   end
@@ -80,4 +101,11 @@ defmodule SelectoComponents.Views.Detail.Options do
   end
 
   def detail_view_mode?(_params), do: false
+
+  defp positive_config(key, default) do
+    case Application.get_env(:selecto_components, key, default) do
+      value when is_integer(value) and value > 0 -> value
+      _value -> default
+    end
+  end
 end

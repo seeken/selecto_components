@@ -399,13 +399,14 @@ defmodule SelectoComponents.Router do
         ">=" -> {field, {:gte, value}}
         "<" -> {field, {:lt, value}}
         "<=" -> {field, {:lte, value}}
-        "like" -> {field, {:like, value}}
-        "case_insensitive_like" -> {field, {:case_insensitive_like, value}}
+        "contains" -> {field, {:text_contains, to_string(value)}}
+        "starts_with" -> {field, {:starts_with, to_string(value)}}
+        "ends_with" -> {field, {:ends_with, to_string(value)}}
         "in" -> {field, {:in, value}}
         "not_in" -> {field, {:not_in, value}}
         "is_null" -> {field, {:is_null, true}}
         "is_not_null" -> {field, {:is_null, false}}
-        _ -> {field, value}
+        other -> reject_comparator!(other)
       end
 
     Selecto.filter(selecto, filter_tuple)
@@ -422,6 +423,22 @@ defmodule SelectoComponents.Router do
   end
 
   defp apply_single_filter(selecto, _), do: selecto
+
+  # Only the comparators above are accepted. A raw LIKE pattern lets the
+  # caller choose wildcards whose meaning differs by database (`[` is a
+  # character class on SQL Server; the default escape character varies) and
+  # probe values one character at a time, and an unknown comparator must not
+  # quietly become an equality filter.
+  defp reject_comparator!(comp) when comp in ["like", "case_insensitive_like"] do
+    raise ArgumentError,
+          "#{comp} filters are not accepted; use contains, starts_with or ends_with"
+  end
+
+  defp reject_comparator!(_comp) do
+    raise ArgumentError,
+          "unsupported filter comparator; use =, !=, >, >=, <, <=, contains, " <>
+            "starts_with, ends_with, in, not_in, is_null or is_not_null"
+  end
 
   defp filter_to_tuple(%{"field" => field, "value" => value}) when not is_nil(field),
     do: {field, value}

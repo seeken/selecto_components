@@ -11,6 +11,7 @@ defmodule SelectoComponents.Views.Detail.Component do
   alias SelectoComponents.EnhancedTable.BulkActions
   alias SelectoComponents.EnhancedTable.RowSelection
   alias SelectoComponents.EnhancedTable.Sorting
+  alias SelectoComponents.Form.ColumnCatalog
   alias SelectoComponents.Presentation
   alias SelectoComponents.Theme
   alias SelectoComponents.Views.Detail.RowActions
@@ -53,9 +54,24 @@ defmodule SelectoComponents.Views.Detail.Component do
       |> assign(:theme, Map.get(assigns, :theme, Theme.default_theme(:light)))
       |> assign(:presentation_context, Map.get(assigns, :presentation_context, %{}))
       |> assign(:columns_config, init_columns_config(columns))
+      |> assign(:sortable_fields, sortable_fields(Map.get(assigns, :selecto)))
 
     {:ok, socket}
   end
+
+  # Headers offer sorting only for fields the query contract marks sortable;
+  # the execution plan rejects any other sort_column request.
+  defp sortable_fields(%Selecto{} = selecto) do
+    surfaces = ColumnCatalog.query_surface_by_field(selecto)
+
+    selecto.set
+    |> Map.get(:columns, [])
+    |> Enum.map(&to_string(&1["field"]))
+    |> Enum.filter(&match?(%{"sortable" => true}, Map.get(surfaces, &1)))
+    |> MapSet.new()
+  end
+
+  defp sortable_fields(_selecto), do: MapSet.new()
 
   def render(assigns) do
     # Check for execution error first
@@ -424,6 +440,7 @@ defmodule SelectoComponents.Views.Detail.Component do
                 <Sorting.sortable_header
                   theme={@theme}
                   column={column_field}
+                  sortable={MapSet.member?(@sortable_fields, to_string(column_field))}
                   label={alias}
                   sort_by={assigns[:sort_by] || []}
                   multi={false}

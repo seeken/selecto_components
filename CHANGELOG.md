@@ -8,6 +8,41 @@ Unreleased
 - Added hidden selection-eligibility fields, per-action selected-ID filtering,
   and rejection of ineligible or non-visible row selection. Mutation guards
   remain mandatory; grouped/co-domain action input controls are not yet ported.
+- Execution plans now start from the Selecto the host assigned instead of
+  reconfiguring the domain, so host `Selecto.filter` scope, required filters,
+  tenant scope and strict policy mode apply to every run. Result page caches
+  include the row scope.
+- The LiveView validates the filter keys that execute (`filter`, `comp`) and
+  column sorting (`sort_column`) against the query contract. The intent
+  validator rejects filters that name several fields or comparators and checks
+  a mode-independent `sort_by` intent.
+- Capped detail page sizes (`:detail_max_per_page`, default 1,000) and
+  `max_rows` (`:detail_max_rows_cap`, default 100,000, which `"all"` now
+  resolves to). Aggregate `aggregate_per_page: "all"` fetches at most
+  `:aggregate_max_rows_cap` rows (default 100,000).
+- Map tile and overlay URLs reject backslashes, control characters and their
+  percent-encoded forms; relative URLs must resolve on the page's origin.
+- Detail column headers offer sorting only for contract-sortable fields.
+- Contains, begins-with, ends-with and does-not-contain filters use Selecto's
+  literal text operators (`LIKE ... ESCAPE '!'`), so `%`, `_`, `[` and `\`
+  match literally on every database. Normalized prefix filters refuse those
+  characters. Requires the Selecto release that adds `{:ends_with, value}`
+  and `Selecto.Error.from_driver/2`.
+- `SelectoComponents.Router` no longer accepts raw `like` /
+  `case_insensitive_like` patterns; use `contains`, `starts_with` or
+  `ends_with`. Unknown comparators are rejected instead of becoming equality
+  filters.
+- The intent validator maps the filter form's comparators (`STARTS`,
+  `TEXT_PREFIX`, `ENDS`, `CONTAINS`, `LIKE`, `NOT LIKE`, the null/empty
+  variants and `BETWEEN`) to contract comparators and checks them against the
+  field's allowed comparators, so these filters run again in the LiveView.
+- Database failures render a fixed message per failure kind; constraint,
+  column and table names and the database's own message are not shown, and
+  raw count-query errors are sanitized like Selecto's executor errors.
+- `Form.dev_mode?/0` follows `SelectoComponents.Env`: an unset `MIX_ENV` or an
+  unrecognized `:environment` value sanitizes errors.
+- Filter sections are expanded at most once when building and rendering
+  filters, so cyclic or repeated section references are refused.
 
 V 0.5.0 - Adapter-Neutral Runtime and Query Library Integration
 ----------------------------------------------------------------

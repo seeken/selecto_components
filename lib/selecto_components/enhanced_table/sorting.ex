@@ -133,7 +133,10 @@ defmodule SelectoComponents.EnhancedTable.Sorting do
   Render sortable column header.
   """
   def sortable_header(assigns) do
-    assigns = Phoenix.Component.assign_new(assigns, :theme, fn -> Theme.default_theme(:light) end)
+    assigns =
+      assigns
+      |> Phoenix.Component.assign_new(:theme, fn -> Theme.default_theme(:light) end)
+      |> Phoenix.Component.assign_new(:sortable, fn -> true end)
 
     # Check if resizable is enabled
     if Map.get(assigns, :resizable, false) && Map.get(assigns, :column_config) do
@@ -153,20 +156,20 @@ defmodule SelectoComponents.EnhancedTable.Sorting do
         data-column-id={@column}
       >
         <div 
-          class="flex items-center justify-between cursor-pointer rounded px-2"
+          class={"flex items-center justify-between rounded px-2 #{if @sortable, do: "cursor-pointer", else: ""}"}
           style="color: inherit;"
-          phx-click="sort_column"
+          phx-click={@sortable && "sort_column"}
           phx-value-column={@column}
           phx-value-multi={@multi || false}
           phx-target={@target}
-          title={"Click to sort by #{@label}#{if @multi, do: " (Shift+Click for multi-column sort)", else: ""}"}
+          title={if @sortable, do: "Click to sort by #{@label}#{if @multi, do: " (Shift+Click for multi-column sort)", else: ""}", else: @label}
           draggable={if Map.get(assigns, :reorderable, false), do: "true", else: "false"}
           phx-hook={if Map.get(assigns, :reorderable, false), do: ".ColumnReorder", else: nil}
           id={"col-header-#{@column}"}
           data-column-id={@column}
         >
           <span class="truncate"><%= @label %></span>
-          <.sort_indicator theme={@theme} column={@column} sort_by={@sort_by} show_position={@multi} />
+          <.sort_indicator :if={@sortable} theme={@theme} column={@column} sort_by={@sort_by} show_position={@multi} />
         </div>
         
         <%!-- Resize handle --%>
@@ -379,17 +382,17 @@ defmodule SelectoComponents.EnhancedTable.Sorting do
       # Original non-resizable header
       ~H"""
       <th
-        class={"cursor-pointer select-none px-6 py-3 text-left text-xs font-medium uppercase tracking-wider #{if get_sort_indicator(@column, @sort_by), do: "font-bold", else: ""}"}
+        class={"#{if @sortable, do: "cursor-pointer", else: ""} select-none px-6 py-3 text-left text-xs font-medium uppercase tracking-wider #{if get_sort_indicator(@column, @sort_by), do: "font-bold", else: ""}"}
         style="background: var(--sc-surface-bg-alt); color: var(--sc-text-secondary); border-bottom: 1px solid var(--sc-surface-border);"
-        phx-click="sort_column"
+        phx-click={@sortable && "sort_column"}
         phx-value-column={@column}
         phx-value-multi={@multi || false}
         phx-target={@target}
-        title={"Click to sort by #{@label}#{if @multi, do: " (Shift+Click for multi-column sort)", else: ""}"}
+        title={if @sortable, do: "Click to sort by #{@label}#{if @multi, do: " (Shift+Click for multi-column sort)", else: ""}", else: @label}
       >
         <div class="flex items-center justify-between">
           <span><%= @label %></span>
-          <.sort_indicator theme={@theme} column={@column} sort_by={@sort_by} show_position={@multi} />
+          <.sort_indicator :if={@sortable} theme={@theme} column={@column} sort_by={@sort_by} show_position={@multi} />
         </div>
       </th>
       """

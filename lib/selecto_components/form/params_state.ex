@@ -427,7 +427,11 @@ defmodule SelectoComponents.Form.ParamsState do
 
         plan = Plan.build(params, socket)
         result = Executor.run(plan, socket)
-        socket = ResultState.assign_result(socket, result)
+
+        socket =
+          socket
+          |> ResultState.assign_result(result)
+          |> Plan.put_scope_baseline(plan)
 
         if result.executed do
           ResultState.maybe_notify_query_executed(result)

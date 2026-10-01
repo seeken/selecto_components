@@ -8,16 +8,17 @@ defmodule SelectoComponents.Helpers.Filters do
   ## For cast
   import Ecto.Type
 
-  # Sanitize LIKE pattern values to prevent SQL injection
-  # Escapes special SQL wildcard characters: %, _, \
-  defp sanitize_like_value(value) when is_binary(value) do
-    value
-    # Escape backslash first
-    |> String.replace("\\", "\\\\")
-    # Escape percent
-    |> String.replace("%", "\\%")
-    # Escape underscore
-    |> String.replace("_", "\\_")
+  # Text-normalized predicates have no literal LIKE operator in core, so their
+  # pattern carries no ESCAPE clause. Without one, `%`, `_`, `[` (a character
+  # class on SQL Server) and `\` (the default escape on some databases) mean
+  # different things on each database; refuse them rather than guess.
+  defp literal_like_prefix!(value) when is_binary(value) do
+    if String.match?(value, ~r/[%_\[\\]/u) do
+      raise ArgumentError,
+            "normalized prefix filters cannot match %, _, [ or \\ literally"
+    end
+
+    value <> "%"
   end
 
   defp parse_num(type, num) do
@@ -315,19 +316,16 @@ defmodule SelectoComponents.Helpers.Filters do
             |> then(fn v -> if(ignore_case, do: String.downcase(v), else: v) end)
 
           {filter_field,
-           {:text_normalized, options, {:like, sanitize_like_value(normalized_value) <> "%"}}}
+           {:text_normalized, options, {:like, literal_like_prefix!(normalized_value)}}}
         else
-          value = transform.(value)
-          {filpart, {:like, sanitize_like_value(value) <> "%"}}
+          {filpart, {:starts_with, transform.(value)}}
         end
 
       "ENDS" ->
-        value = transform.(get_string_value(filter))
-        {filpart, {:like, "%" <> sanitize_like_value(value)}}
+        {filpart, {:ends_with, transform.(get_string_value(filter))}}
 
       "CONTAINS" ->
-        value = transform.(get_string_value(filter))
-        {filpart, {:like, "%" <> sanitize_like_value(value) <> "%"}}
+        {filpart, {:text_contains, transform.(get_string_value(filter))}}
 
       "TEXT_PREFIX" ->
         prefix_length = BucketParser.parse_prefix_length(Map.get(filter, "prefix_length"), 2)
@@ -347,7 +345,7 @@ defmodule SelectoComponents.Helpers.Filters do
           raise ArgumentError, "TEXT_PREFIX requires a non-empty prefix value"
         end
 
-        {filter_field, {:text_normalized, options, {:like, sanitize_like_value(prefix) <> "%"}}}
+        {filter_field, {:text_normalized, options, {:like, literal_like_prefix!(prefix)}}}
 
       "TEXT_PREFIX_OTHER" ->
         exclude_articles =
@@ -357,12 +355,10 @@ defmodule SelectoComponents.Helpers.Filters do
         {filter_field, {:text_normalized, options, ""}}
 
       "LIKE" ->
-        value = transform.(get_string_value(filter))
-        {filpart, {:like, "%" <> sanitize_like_value(value) <> "%"}}
+        {filpart, {:text_contains, transform.(get_string_value(filter))}}
 
       "NOT LIKE" ->
-        value = transform.(get_string_value(filter))
-        {filpart, {:not_like, "%" <> sanitize_like_value(value) <> "%"}}
+        {:not, {filpart, {:text_contains, transform.(get_string_value(filter))}}}
 
       _ ->
         raise ArgumentError, "unsupported string comparison operator #{inspect(comp_norm)}"
@@ -704,6 +700,16 @@ defmodule SelectoComponents.Helpers.Filters do
   end
 
   defp do_filter_recurse(selecto, filters, section, mode) do
+    case recurse_section(selecto, filters, section, mode, MapSet.new([section])) do
+      {:ok, built, _visited} -> {:ok, built}
+      {:error, _error} = error -> error
+    end
+  end
+
+  # Each section is expanded at most once. A section that names itself, a
+  # cycle of sections, or a section referenced from several places is refused
+  # instead of recursing forever or multiplying the work.
+  defp recurse_section(selecto, filters, section, mode, visited) do
     # Filter out any bucket_ranges strings that shouldn't be filters
     section_filters =
       Map.get(filters, section, [])
@@ -717,19 +723,19 @@ defmodule SelectoComponents.Helpers.Filters do
       end)
 
     result =
-      Enum.reduce_while(section_filters, {:ok, []}, fn filter_item, {:ok, acc} ->
-        case process_single_filter(selecto, filters, filter_item, mode) do
-          {:ok, filter_results} when is_list(filter_results) ->
-            {:cont, {:ok, acc ++ filter_results}}
+      Enum.reduce_while(section_filters, {:ok, [], visited}, fn filter_item,
+                                                                {:ok, acc, visited} ->
+        {outcome, visited} = process_filter_item(selecto, filters, filter_item, mode, visited)
 
-          {:ok, filter_result} ->
-            {:cont, {:ok, acc ++ [filter_result]}}
+        case outcome do
+          {:ok, filter_results} when is_list(filter_results) ->
+            {:cont, {:ok, acc ++ filter_results, visited}}
 
           {:skip, reason} when mode == :strict ->
             {:halt, {:error, %{reason: reason, filter: filter_item}}}
 
           {:skip, _reason} ->
-            {:cont, {:ok, acc}}
+            {:cont, {:ok, acc, visited}}
 
           {:error, error} when mode == :strict ->
             {:halt, {:error, error}}
@@ -741,18 +747,20 @@ defmodule SelectoComponents.Helpers.Filters do
               "Filter processing error: #{inspect(error)}, filter: #{inspect(filter_item)}"
             )
 
-            {:cont, {:ok, acc}}
+            {:cont, {:ok, acc, visited}}
         end
       end)
 
     case result do
-      {:ok, built} -> {:ok, built ++ handle_polymorphic_filters(section_filters)}
-      {:error, _error} = error -> error
+      {:ok, built, visited} ->
+        {:ok, built ++ handle_polymorphic_filters(section_filters), visited}
+
+      {:error, _error} = error ->
+        error
     end
   end
 
-  # Process a single filter with error handling
-  defp process_single_filter(
+  defp process_filter_item(
          selecto,
          filters,
          %{
@@ -760,7 +768,8 @@ defmodule SelectoComponents.Helpers.Filters do
            "uuid" => uuid,
            "conjunction" => conj
          },
-         mode
+         mode,
+         visited
        ) do
     conjunction_atom =
       case conj do
@@ -769,12 +778,20 @@ defmodule SelectoComponents.Helpers.Filters do
         _ -> :and
       end
 
-    case do_filter_recurse(selecto, filters, uuid, mode) do
-      {:ok, nested_filters} -> {:ok, [{conjunction_atom, nested_filters}]}
-      {:error, _error} = error -> error
+    if MapSet.member?(visited, uuid) do
+      {{:skip, {:repeated_filter_section, uuid}}, visited}
+    else
+      case recurse_section(selecto, filters, uuid, mode, MapSet.put(visited, uuid)) do
+        {:ok, nested_filters, visited} -> {{:ok, [{conjunction_atom, nested_filters}]}, visited}
+        {:error, _error} = error -> {error, visited}
+      end
     end
   end
 
+  defp process_filter_item(selecto, filters, filter_item, mode, visited),
+    do: {process_single_filter(selecto, filters, filter_item, mode), visited}
+
+  # Process a single filter with error handling
   defp process_single_filter(selecto, _filters, f, _mode) when is_map(f) do
     f = normalize_multiselect_filter(f)
 

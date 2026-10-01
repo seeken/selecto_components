@@ -331,20 +331,13 @@ defmodule SelectoComponents.ErrorHandling.ErrorBuilder do
   defp infer_user_message(%{user_message: message}, _category, _stage) when is_binary(message),
     do: message
 
-  defp infer_user_message(%{__struct__: module} = error, :query, _stage)
+  defp infer_user_message(%{__struct__: module} = error, category, stage)
        when module == Selecto.Error do
-    if Code.ensure_loaded?(Selecto.Error) and
-         function_exported?(Selecto.Error, :to_display_message, 1) do
-      Selecto.Error.to_display_message(error)
+    if DBSupport.database_failure?(error) do
+      DBSupport.format_database_error(error)
     else
-      Map.get(error, :message) || default_user_message(:query_build, :query, :query_error)
+      infer_selecto_user_message(error, category, stage)
     end
-  end
-
-  defp infer_user_message(%{__struct__: module} = error, _category, stage)
-       when module == Selecto.Error do
-    Map.get(error, :message) ||
-      default_user_message(stage, infer_category(error, stage), infer_code(error, nil, stage))
   end
 
   defp infer_user_message({:error, error}, :database, _stage) when is_map(error) do
@@ -371,7 +364,27 @@ defmodule SelectoComponents.ErrorHandling.ErrorBuilder do
   defp infer_user_message(error, _category, _stage) when is_binary(error), do: error
   defp infer_user_message(_error, category, stage), do: default_user_message(stage, category, nil)
 
+  defp infer_selecto_user_message(error, :query, _stage) do
+    if Code.ensure_loaded?(Selecto.Error) and
+         function_exported?(Selecto.Error, :to_display_message, 1) do
+      Selecto.Error.to_display_message(error)
+    else
+      Map.get(error, :message) || default_user_message(:query_build, :query, :query_error)
+    end
+  end
+
+  defp infer_selecto_user_message(error, _category, stage) do
+    Map.get(error, :message) ||
+      default_user_message(stage, infer_category(error, stage), infer_code(error, nil, stage))
+  end
+
   defp infer_detail(%{detail: detail}, _user_message) when is_binary(detail), do: detail
+
+  defp infer_detail(%{__struct__: module} = error, user_message) when module == Selecto.Error do
+    if DBSupport.database_failure?(error),
+      do: nil,
+      else: infer_detail(Map.from_struct(error), user_message)
+  end
 
   defp infer_detail(%{details: details}, user_message) when is_map(details) do
     cond do

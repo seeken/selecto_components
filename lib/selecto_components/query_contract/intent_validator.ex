@@ -9,6 +9,8 @@ defmodule SelectoComponents.QueryContract.IntentValidator do
 
   @supported_view_modes ~w(detail aggregate graph map)
   @sort_directions ~w(asc desc)
+  @filter_field_keys [:field, :id, :filter]
+  @comparator_keys [:comparator, :comp, :operator, :op]
 
   @type diagnostic :: %{
           required(:code) => atom(),
@@ -36,6 +38,7 @@ defmodule SelectoComponents.QueryContract.IntentValidator do
         else
           []
         end ++
+        validate_sort_by(intent, indexes) ++
         validate_output_intent(intent, indexes)
 
     %{valid?: errors == [], errors: errors, warnings: []}
@@ -200,6 +203,26 @@ defmodule SelectoComponents.QueryContract.IntentValidator do
           not is_map(filter) ->
             [error(:invalid_filter, path, "filter item must be a map")]
 
+          values = conflicting_values(filter, @filter_field_keys, &string_id/1) ->
+            [
+              error(
+                :ambiguous_filter_field,
+                "#{path}.field",
+                "filter names more than one field",
+                value: values
+              )
+            ]
+
+          values = conflicting_values(filter, @comparator_keys, &comparator_value/1) ->
+            [
+              error(
+                :ambiguous_comparator,
+                "#{path}.comparator",
+                "filter names more than one comparator",
+                value: values
+              )
+            ]
+
           is_nil(field_id) ->
             [error(:invalid_field_reference, "#{path}.field", "filter must include a field id")]
 
@@ -280,8 +303,12 @@ defmodule SelectoComponents.QueryContract.IntentValidator do
     maybe_invalid_list(errors, intent, base_path, keys)
   end
 
-  defp validate_order_by(intent, indexes) do
-    {orders, base_path} = intent_list(intent, [:order_by, :sort])
+  # Column sorting (a table header click) replaces the order in every view
+  # mode, so it is validated regardless of the mode-specific checks.
+  defp validate_sort_by(intent, indexes), do: validate_order_by(intent, indexes, [:sort_by])
+
+  defp validate_order_by(intent, indexes, keys \\ [:order_by, :sort]) do
+    {orders, base_path} = intent_list(intent, keys)
 
     errors =
       Enum.flat_map(orders, fn {order, path} ->
@@ -327,7 +354,7 @@ defmodule SelectoComponents.QueryContract.IntentValidator do
         end
       end)
 
-    maybe_invalid_list(errors, intent, base_path, [:order_by, :sort])
+    maybe_invalid_list(errors, intent, base_path, keys)
   end
 
   defp validate_output_intent(intent, indexes) do
@@ -705,7 +732,7 @@ defmodule SelectoComponents.QueryContract.IntentValidator do
       |> list_or_empty()
       |> Enum.map(&string_id/1)
 
-    comparator = string_id(comparator)
+    comparator = comparator |> string_id() |> contract_comparator()
 
     if comparator in comparators do
       []
@@ -828,16 +855,58 @@ defmodule SelectoComponents.QueryContract.IntentValidator do
 
   defp comparator_id(_filter), do: nil
 
-  defp normalize_comparator("="), do: "eq"
-  defp normalize_comparator("!="), do: "neq"
-  defp normalize_comparator("<>"), do: "neq"
-  defp normalize_comparator(">"), do: "gt"
-  defp normalize_comparator(">="), do: "gte"
-  defp normalize_comparator("<"), do: "lt"
-  defp normalize_comparator("<="), do: "lte"
-  defp normalize_comparator("IN"), do: "in"
-  defp normalize_comparator("NOT IN"), do: "not_in"
+  defp comparator_value(value), do: value |> string_id() |> normalize_comparator()
+
+  # A filter that names a field (or comparator) under more than one key could
+  # be validated under one key and executed under another; refuse it.
+  defp conflicting_values(map, keys, normalize) do
+    keys
+    |> Enum.map(&map_get(map, &1))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(normalize)
+    |> Enum.uniq()
+    |> case do
+      [_first, _second | _rest] = values -> values
+      _values -> nil
+    end
+  end
+
+  # The filter form's comparators (`STARTS`, `LIKE`, `IS NULL`, ...) mapped to
+  # the contract's comparator ids. `NOT LIKE` stays distinct here so a filter
+  # cannot name it and `contains` at once; it is checked as `contains`, which
+  # has the same matching power.
+  @ui_comparators %{
+    "=" => "eq",
+    "!=" => "neq",
+    "<>" => "neq",
+    ">" => "gt",
+    ">=" => "gte",
+    "<" => "lt",
+    "<=" => "lte",
+    "IN" => "in",
+    "NOT IN" => "not_in",
+    "STARTS" => "starts_with",
+    "TEXT_PREFIX" => "starts_with",
+    "ENDS" => "ends_with",
+    "CONTAINS" => "contains",
+    "LIKE" => "contains",
+    "NOT LIKE" => "not_contains",
+    "IS NULL" => "is_null",
+    "IS_EMPTY" => "is_null",
+    "NULL" => "is_null",
+    "IS NOT NULL" => "not_null",
+    "NOT_NULL" => "not_null",
+    "IS_NOT_EMPTY" => "not_null",
+    "BETWEEN" => "between"
+  }
+
+  defp normalize_comparator(value) when is_binary(value),
+    do: Map.get(@ui_comparators, String.upcase(value), value)
+
   defp normalize_comparator(value), do: value
+
+  defp contract_comparator("not_contains"), do: "contains"
+  defp contract_comparator(comparator), do: comparator
 
   defp aggregate_function_id(metric) when is_map(metric) do
     map_get(metric, :function) ||

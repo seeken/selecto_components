@@ -30,10 +30,14 @@ defmodule SelectoComponents.Execution.Plan do
     :view_tuple,
     :view_set,
     :view_meta,
-    :validation_errors
+    :validation_errors,
+    :scope_baseline
   ]
 
   @type t :: %__MODULE__{}
+
+  @scope_baseline_assign :selecto_scope_baseline
+  @filter_alias_keys ~w(field id comparator operator op)
 
   @spec build(map(), Phoenix.LiveView.Socket.t()) :: t()
   def build(params, socket) when is_map(params) do
@@ -47,8 +51,10 @@ defmodule SelectoComponents.Execution.Plan do
       |> ParamsState.canonicalize_form_params(socket.assigns[:selecto], presentation_context)
       |> put_runtime_presentation_context(presentation_context)
 
+    scope_baseline = scope_baseline(socket.assigns)
+
     selecto =
-      socket.assigns.selecto
+      scope_baseline
       |> rebuild_selecto()
       |> CTEs.apply_for_params(params)
       |> QueryLibrary.apply_segments(get_map_value(params, :query_library, %{}))
@@ -97,24 +103,56 @@ defmodule SelectoComponents.Execution.Plan do
       view_tuple: view_tuple,
       view_set: view_set,
       view_meta: view_meta,
-      validation_errors: intent_validation.errors ++ filter_errors
+      validation_errors: intent_validation.errors ++ filter_errors,
+      scope_baseline: scope_baseline
     }
   end
 
-  defp rebuild_selecto(old_selecto) do
-    rebuilt =
-      old_selecto.domain
-      |> Selecto.configure(
-        old_selecto.runtime ||
-          Selecto.Runtime.Context.new(old_selecto.adapter, old_selecto.connection),
-        adapter: old_selecto.adapter,
-        validate: false
-      )
-      |> Map.put(:domain_ref, Map.get(old_selecto, :domain_ref))
+  @doc """
+  Records the host scope a plan was built from on the socket that now holds
+  the plan's Selecto, so the next plan starts from the same host scope.
+  """
+  @spec put_scope_baseline(Phoenix.LiveView.Socket.t(), t()) :: Phoenix.LiveView.Socket.t()
+  def put_scope_baseline(socket, %__MODULE__{scope_baseline: baseline, selecto: planned}) do
+    Phoenix.Component.assign(socket, @scope_baseline_assign, %{
+      baseline: baseline,
+      planned: planned
+    })
+  end
 
-    case Selecto.tenant(old_selecto) do
-      nil -> rebuilt
-      tenant -> rebuilt |> Selecto.with_tenant(tenant) |> Selecto.apply_tenant_scope()
+  @doc """
+  Identifies the row scope of a planned Selecto: its filters, required
+  filters and tenant. Result page caches include it so rows cached under one
+  scope are never served after the host narrows or changes the scope.
+  """
+  @spec scope_signature(Selecto.t() | term()) :: non_neg_integer() | nil
+  def scope_signature(%Selecto{} = selecto) do
+    :erlang.phash2(
+      {Map.get(selecto.set, :filtered, []), Selecto.required_filters(selecto),
+       Selecto.tenant(selecto)}
+    )
+  end
+
+  def scope_signature(_selecto), do: nil
+
+  # After a run the socket holds the planned Selecto, whose set carries the
+  # previous query. Plans start from the Selecto the host assigned instead,
+  # with its filters, required filters, tenant, policy and runtime intact. A
+  # Selecto that is not the last planned one was assigned or changed by the
+  # host and becomes the new baseline.
+  defp scope_baseline(assigns) do
+    current = Map.get(assigns, :selecto)
+
+    case Map.get(assigns, @scope_baseline_assign) do
+      %{planned: planned, baseline: baseline} when planned === current -> baseline
+      _other -> current
+    end
+  end
+
+  defp rebuild_selecto(host_selecto) do
+    case Selecto.tenant(host_selecto) do
+      nil -> host_selecto
+      _tenant -> Selecto.apply_tenant_scope(host_selecto)
     end
   end
 
@@ -157,19 +195,40 @@ defmodule SelectoComponents.Execution.Plan do
   defp validate_intent(params, socket, selecto) do
     contract = Map.get(socket.assigns, :query_contract, selecto)
     opts = Map.get(socket.assigns, :query_contract_opts, [])
-    QueryContract.validate_intent(contract, execution_intent(params), opts)
+    intent = execution_intent(params, socket.assigns[:sort_by])
+    QueryContract.validate_intent(contract, intent, opts)
   end
 
-  defp execution_intent(params) do
+  defp execution_intent(params, sort_by) do
     filters =
       params
       |> Map.get("filters", %{})
       |> Map.values()
       |> Enum.filter(&(is_map(&1) and Map.get(&1, "is_section") not in ["Y", true, "true"]))
+      |> Enum.map(&executed_filter_intent/1)
 
     params
     |> Map.put("filters", filters)
+    |> put_sort_intent(sort_by)
   end
+
+  # The filter builder reads only "filter" and "comp", so validate exactly
+  # those keys rather than an alias the validator would otherwise prefer.
+  defp executed_filter_intent(%{"filter" => _field} = filter),
+    do: Map.drop(filter, @filter_alias_keys)
+
+  defp executed_filter_intent(filter), do: filter
+
+  # Column sorting replaces the query's order_by in every view mode.
+  defp put_sort_intent(intent, [_ | _] = sort_by),
+    do: Map.put(intent, "sort_by", Enum.map(sort_by, &sort_intent/1))
+
+  defp put_sort_intent(intent, _sort_by), do: Map.delete(intent, "sort_by")
+
+  defp sort_intent({column, direction}),
+    do: %{"field" => to_string(column), "direction" => to_string(direction)}
+
+  defp sort_intent(other), do: other
 
   defp filter_build_error(error) do
     %{

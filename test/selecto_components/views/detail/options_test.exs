@@ -19,7 +19,7 @@ defmodule SelectoComponents.Views.Detail.OptionsTest do
   test "normalizes max rows limit" do
     assert Options.normalize_max_rows_limit("100") == 100
     assert Options.normalize_max_rows_limit("1000") == 1000
-    assert Options.normalize_max_rows_limit("all") == nil
+    assert Options.normalize_max_rows_limit("all") == Options.max_rows_cap()
   end
 
   test "normalizes count mode values" do

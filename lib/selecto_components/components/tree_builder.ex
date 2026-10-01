@@ -167,7 +167,7 @@ defmodule SelectoComponents.Components.TreeBuilder do
           >
             {render_area(%{
               available: @available,
-              filters: Enum.with_index(@filters),
+              filters: Enum.with_index(renderable_filters(@filters)),
               section: "filters",
               index: 0,
               conjunction: "AND",
@@ -1253,6 +1253,39 @@ defmodule SelectoComponents.Components.TreeBuilder do
       family -> family
     end
   end
+
+  # Each filter section is drawn at most once. A section row that names the
+  # root, an ancestor or an already drawn section would otherwise make the
+  # drop zone render itself without end.
+  defp renderable_filters(filters) when is_list(filters) do
+    indexed = Enum.with_index(filters)
+
+    {repeated, _drawn} =
+      repeated_sections(indexed, "filters", {MapSet.new(), MapSet.new(["filters"])})
+
+    for {row, index} <- indexed, not MapSet.member?(repeated, index), do: row
+  end
+
+  defp renderable_filters(filters), do: filters
+
+  defp repeated_sections(indexed, section, acc) do
+    indexed
+    |> Enum.filter(fn {row, _index} -> filter_row_section(row) == section end)
+    |> Enum.reduce(acc, fn
+      {{uuid, _section, conjunction}, index}, {repeated, drawn} when is_binary(conjunction) ->
+        if MapSet.member?(drawn, uuid) do
+          {MapSet.put(repeated, index), drawn}
+        else
+          repeated_sections(indexed, uuid, {repeated, MapSet.put(drawn, uuid)})
+        end
+
+      _row, acc ->
+        acc
+    end)
+  end
+
+  defp filter_row_section({_uuid, section, _config}), do: section
+  defp filter_row_section(_row), do: nil
 
   defp render_area(assigns) do
     assigns = Map.put(assigns, :new_uuid, UUID.uuid4())

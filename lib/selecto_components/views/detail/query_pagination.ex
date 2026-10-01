@@ -2,6 +2,7 @@ defmodule SelectoComponents.Views.Detail.QueryPagination do
   @moduledoc false
 
   alias SelectoComponents.DBSupport
+  alias SelectoComponents.Execution.Plan
   alias SelectoComponents.QueryResults
   alias SelectoComponents.Views.Detail.Options
 
@@ -10,7 +11,7 @@ defmodule SelectoComponents.Views.Detail.QueryPagination do
   @keyset_page_threshold 50
 
   def execute(selecto, params, view_meta, socket) do
-    per_page = max(Map.get(view_meta, :per_page, 30), 1)
+    per_page = view_meta |> Map.get(:per_page, 30) |> Options.cap_per_page()
     requested_page = max(Map.get(view_meta, :page, 0), 0)
 
     count_mode =
@@ -21,7 +22,7 @@ defmodule SelectoComponents.Views.Detail.QueryPagination do
     max_rows_limit =
       Options.normalize_max_rows_limit(Map.get(view_meta, :max_rows, Options.default_max_rows()))
 
-    cache_key = detail_cache_signature(params, socket.assigns[:sort_by])
+    cache_key = detail_cache_signature(params, socket.assigns[:sort_by], selecto)
 
     cache =
       socket.assigns[:detail_page_cache]
@@ -121,10 +122,11 @@ defmodule SelectoComponents.Views.Detail.QueryPagination do
     }
   end
 
-  defp detail_cache_signature(params, sort_by) do
+  defp detail_cache_signature(params, sort_by, selecto) do
     %{
       params: Map.drop(params, ["detail_page"]),
-      sort_by: sort_by || []
+      sort_by: sort_by || [],
+      scope: Plan.scope_signature(selecto)
     }
   end
 

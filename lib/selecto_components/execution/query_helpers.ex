@@ -6,6 +6,7 @@ defmodule SelectoComponents.Execution.QueryHelpers do
   require Logger
 
   alias SelectoComponents.DBSupport
+  alias SelectoComponents.Execution.Plan
   alias SelectoComponents.QueryResults
   alias SelectoComponents.Views.Aggregate.Options, as: AggregateOptions
   alias SelectoComponents.Views.Aggregate.GridSafety
@@ -99,7 +100,7 @@ defmodule SelectoComponents.Execution.QueryHelpers do
     requested_page = normalize_page_param(get_map_value(params, :aggregate_page, 0))
     base_selecto = clear_limit_offset(selecto)
 
-    cache_signature = aggregate_cache_signature(params, socket.assigns[:sort_by])
+    cache_signature = aggregate_cache_signature(params, socket.assigns[:sort_by], base_selecto)
 
     aggregate_cache =
       init_or_reset_aggregate_cache(
@@ -137,7 +138,9 @@ defmodule SelectoComponents.Execution.QueryHelpers do
               result
           end
         else
-          execute_query_with_metadata(base_selecto)
+          execute_query_with_metadata(
+            Selecto.limit(base_selecto, AggregateOptions.max_rows_cap())
+          )
         end
 
       {result, updated_view_meta, nil}
@@ -191,8 +194,12 @@ defmodule SelectoComponents.Execution.QueryHelpers do
     %{signature: signature, per_page_setting: per_page_setting, total_rows: nil, pages: %{}}
   end
 
-  defp aggregate_cache_signature(params, sort_by) do
-    %{params: Map.drop(params, ["aggregate_page", "detail_page"]), sort_by: sort_by || []}
+  defp aggregate_cache_signature(params, sort_by, selecto) do
+    %{
+      params: Map.drop(params, ["aggregate_page", "detail_page"]),
+      sort_by: sort_by || [],
+      scope: Plan.scope_signature(selecto)
+    }
   end
 
   defp maybe_fetch_aggregate_total_rows(_selecto, %{total_rows: total_rows} = cache)

@@ -254,7 +254,7 @@ defmodule SelectoComponents.Helpers.FiltersTest do
 
       [filter] = Filters.filter_recurse(selecto(), filters, "filters")
 
-      assert {{:upper, "title"}, {:like, "%OFFICE%"}} = filter
+      assert {{:upper, "title"}, {:text_contains, "OFFICE"}} = filter
     end
 
     test "supports case-insensitive starts-with filters" do
@@ -273,7 +273,7 @@ defmodule SelectoComponents.Helpers.FiltersTest do
 
       [filter] = Filters.filter_recurse(selecto(), filters, "filters")
 
-      assert {{:upper, "title"}, {:like, "THE%"}} = filter
+      assert {{:upper, "title"}, {:starts_with, "THE"}} = filter
     end
   end
 

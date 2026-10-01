@@ -36,7 +36,9 @@ defmodule SelectoComponents.Views.Detail.Process do
 
   ### Process incoming params to build Selecto.set for view
   def view(_opt, params, columns, filtered, selecto) do
-    per_page = parse_positive_integer(Map.get(params, "per_page"), 30)
+    per_page =
+      params |> Map.get("per_page") |> parse_positive_integer(30) |> Options.cap_per_page()
+
     max_rows = Options.normalize_max_rows_param(Map.get(params, "max_rows"))
     count_mode = Options.normalize_count_mode_param(Map.get(params, "count_mode"))
 
@@ -135,6 +137,7 @@ defmodule SelectoComponents.Views.Detail.Process do
   defp normalize_per_page_param(value) do
     value
     |> parse_positive_integer(30)
+    |> Options.cap_per_page()
     |> to_string()
   end
 

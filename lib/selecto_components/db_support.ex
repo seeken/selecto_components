@@ -52,27 +52,65 @@ defmodule SelectoComponents.DBSupport do
 
   def database_error_recoverable?(_error), do: false
 
+  @database_failure_categories [
+    :database_error,
+    :unique_violation,
+    :foreign_key_violation,
+    :not_null_violation,
+    :check_violation,
+    :query_canceled,
+    :serialization_failure,
+    :deadlock_detected
+  ]
+  @database_failure_detail_keys [:constraint, :column, :table, :sqlstate]
+
+  @doc false
+  # A failure the database reported. Its message and details can name
+  # constraints, columns and values, so user-facing text comes only from
+  # `format_database_error/1`.
+  def database_failure?(%Selecto.Error{type: :constraint_error}), do: true
+
+  def database_failure?(%Selecto.Error{details: details}) when is_map(details) do
+    Map.get(details, :category) in @database_failure_categories or
+      Enum.any?(@database_failure_detail_keys, &Map.has_key?(details, &1))
+  end
+
+  def database_failure?(_error), do: false
+
+  # A fixed sentence per failure kind. Constraint, column and table names and
+  # the database's own message are never rendered to users.
   def format_database_error(%Selecto.Error{} = error) do
-    details = database_error_details(error)
+    case {error.type, database_error_details(error)[:category]} do
+      {_type, :unique_violation} ->
+        "A record with the same unique value already exists."
 
-    case {details[:category], details[:constraint], details[:column]} do
-      {:unique_violation, constraint, _column} when is_binary(constraint) ->
-        "Duplicate value violates uniqueness constraint: #{constraint}"
+      {_type, :foreign_key_violation} ->
+        "The change refers to a related record that is missing or still in use."
 
-      {:foreign_key_violation, constraint, _column} when is_binary(constraint) ->
-        "Foreign key constraint violation: #{constraint}"
+      {_type, :not_null_violation} ->
+        "A required value is missing."
 
-      {:not_null_violation, _constraint, column} when is_binary(column) ->
-        "Required field '#{column}' cannot be empty"
+      {_type, :check_violation} ->
+        "A value is not allowed by a database rule."
 
-      _category_and_fields ->
-        if is_binary(error.message),
-          do: "Database error: #{error.message}",
-          else: "Database error"
+      {_type, :query_canceled} ->
+        "The database canceled the query."
+
+      {_type, category} when category in [:serialization_failure, :deadlock_detected] ->
+        "The database could not complete the query because of a concurrent change. Try again."
+
+      {:connection_error, _category} ->
+        "The database connection failed."
+
+      {:timeout_error, _category} ->
+        "The database query timed out."
+
+      _type_and_category ->
+        "The database could not complete the query."
     end
   end
 
-  def format_database_error(_error), do: "Database error"
+  def format_database_error(_error), do: "The database could not complete the query."
 
   defp adapter_name(selecto) do
     selecto
@@ -88,29 +126,30 @@ defmodule SelectoComponents.DBSupport do
             {:ok, {Map.get(normalized, :rows, []), Map.get(normalized, :columns, []), aliases}}
 
           {:error, reason} ->
-            {:error, Selecto.AdapterSupport.normalize_error(adapter, reason)}
+            {:error, driver_error(adapter, reason)}
         end
 
-      {:error, %Selecto.Error{} = error} ->
-        {:error, error}
-
       {:error, reason} ->
-        {:error, Selecto.AdapterSupport.normalize_error(adapter, reason)}
+        {:error, driver_error(adapter, reason)}
     end
   rescue
     error ->
       {:error,
        Selecto.Error.connection_error("Adapter raw execution failed", %{
          adapter: adapter,
-         connection: inspect(connection),
-         error: inspect(error)
+         reason: Selecto.Error.reason_kind(error)
        })}
   catch
     :exit, reason ->
       {:error,
-       Selecto.Error.connection_error("Adapter raw connection failed", %{
-         adapter: adapter,
-         exit_reason: reason
-       })}
+       Selecto.Error.connection_error(
+         "Adapter raw connection failed",
+         Map.put(Selecto.Error.exit_details(reason), :adapter, adapter)
+       )}
   end
+
+  # Matches Selecto's own execution path: the result never carries SQL,
+  # parameters, the connection, or the database's message and detail.
+  defp driver_error(adapter, reason),
+    do: Selecto.Error.from_driver(reason, Selecto.AdapterSupport.normalize_error(adapter, reason))
 end

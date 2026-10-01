@@ -140,9 +140,13 @@ defmodule SelectoComponents.Views.Detail.QueryPaginationTest do
     request_params = params(%{"detail_page" => "50"})
 
     cache = %{
-      signature: %{params: Map.drop(request_params, ["detail_page"]), sort_by: []},
+      signature: %{
+        params: Map.drop(request_params, ["detail_page"]),
+        sort_by: [],
+        scope: SelectoComponents.Execution.Plan.scope_signature(selecto)
+      },
       per_page: 2,
-      max_rows_limit: nil,
+      max_rows_limit: SelectoComponents.Views.Detail.Options.max_rows_cap(),
       count_mode: "none",
       total_rows: 200,
       columns: ["id", "name"],

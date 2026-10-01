@@ -451,14 +451,18 @@ defmodule SelectoComponents.Views.Map.Process do
       is_nil(value) ->
         nil
 
-      String.starts_with?(value, "/") and not String.starts_with?(value, "//") ->
-        value
+      # Browsers read a backslash as a slash and drop tab, CR and LF, so
+      # "/\host" or "/<tab>/host" would leave the origin. Refuse those
+      # characters, other controls, and their percent-encoded forms outright.
+      unsafe_map_url?(value) ->
+        nil
+
+      String.starts_with?(value, "/") ->
+        if same_origin_map_path?(value), do: value
 
       true ->
-        parseable_url = Regex.replace(~r/\{[^{}]+\}/, value, "template")
-
         with {:ok, %URI{scheme: "https", host: host, userinfo: nil}} when is_binary(host) <-
-               URI.new(parseable_url),
+               value |> map_url_template_placeholders() |> URI.new(),
              true <- allowed_map_url_host?(String.downcase(host)) do
           value
         else
@@ -466,6 +470,30 @@ defmodule SelectoComponents.Views.Map.Process do
         end
     end
   end
+
+  defp unsafe_map_url?(value) do
+    String.contains?(value, "\\") or
+      String.match?(value, ~r/[\x00-\x1F\x7F]/) or
+      String.match?(value, ~r/%(5c|[01][0-9a-f]|7f)/i)
+  end
+
+  # A relative map URL must stay on the page's origin once a browser
+  # resolves it.
+  defp same_origin_map_path?(value) do
+    case value |> map_url_template_placeholders() |> URI.new() do
+      {:ok, %URI{scheme: nil, host: nil, userinfo: nil, path: "/" <> _rest} = uri} ->
+        match?(
+          %URI{scheme: "https", host: "map-base.invalid", userinfo: nil},
+          URI.merge("https://map-base.invalid", uri)
+        )
+
+      _other ->
+        false
+    end
+  end
+
+  defp map_url_template_placeholders(value),
+    do: Regex.replace(~r/\{[^{}]+\}/, value, "template")
 
   defp allowed_map_url_host?(host) do
     :selecto_components
