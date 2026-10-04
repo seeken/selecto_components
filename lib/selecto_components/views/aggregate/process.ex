@@ -87,7 +87,7 @@ defmodule SelectoComponents.Views.Aggregate.Process do
       end
 
     rollup_group_by =
-      if grid do
+      if grid or not rollup_supported?(selecto) do
         Enum.map(group_by_with_coalesce, &elem(&1, 1))
       else
         case collapse_linked_rollup_groups(group_by_with_coalesce) do
@@ -114,6 +114,12 @@ defmodule SelectoComponents.Views.Aggregate.Process do
        grid_colorize: grid_colorize,
        grid_color_scale: grid_color_scale
      }}
+  end
+
+  defp rollup_supported?(selecto) do
+    selecto
+    |> Selecto.AdapterSQL.adapter()
+    |> Selecto.AdapterSupport.supports_feature?(:rollup)
   end
 
   defp truthy_param?(value) when value in [true, "true", "on", "1", 1], do: true

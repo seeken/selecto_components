@@ -5,6 +5,23 @@ defmodule SelectoComponents.Views.Graph.FormTest do
 
   alias SelectoComponents.Views.Graph.Form
 
+  test "extension graph forms scope their analytical pickers to their view" do
+    selecto = selecto()
+
+    html =
+      render_component(Form, %{
+        id: "timeseries-form-test",
+        columns: SelectoComponents.Form.ColumnCatalog.picker_columns(selecto),
+        view: {:timeseries, SelectoComponents.Views.Graph, "Time Series", %{}},
+        selecto: selecto,
+        view_config: %{views: %{timeseries: %{group_by: [], aggregate: [], visual: visual(%{})}}}
+      })
+
+    assert html =~ "timeseries_group_by"
+    assert html =~ "timeseries_aggregate"
+    refute html =~ ~s(id="list-picker-group_by")
+  end
+
   test "renders Aggregate query controls with graph-scoped form parameters" do
     html =
       render_graph(%{

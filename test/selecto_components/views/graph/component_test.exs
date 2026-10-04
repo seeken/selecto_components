@@ -650,6 +650,14 @@ defmodule SelectoComponents.Views.Graph.ComponentTest do
       assert html_string =~ "📊"
     end
 
+    test "renders no data for an empty result tuple or a null-only rollup row" do
+      for rows <- [[], [[nil, nil, nil]]] do
+        html = render_component_html(%{executed: true, query_results: {rows, [], []}})
+        assert html =~ "No Data Available"
+        refute html =~ "<canvas"
+      end
+    end
+
     test "renders chart when executed with results" do
       assigns = %{
         executed: true,

@@ -650,6 +650,44 @@ defmodule SelectoComponents.QueryContractTest do
       assert validation[:valid?]
     end
 
+    test "time series must be exposed and validates the graph form fields it executes" do
+      intent = %{
+        "view_mode" => "timeseries",
+        "graph_group_by" => %{"g0" => %{"field" => "status"}},
+        "graph_aggregate" => %{"m0" => %{"field" => "customer_id", "format" => "sum"}}
+      }
+
+      document = query_contract_document()
+
+      assert [%{code: :invalid_view_mode}] =
+               QueryContract.validate_intent(document, intent).errors
+
+      document =
+        put_in(document, ["context", "view_modes"], ["detail", "aggregate", "timeseries"])
+
+      assert QueryContract.validate_intent(document, intent).valid?
+
+      invalid = put_in(intent, ["graph_group_by", "g0", "field"], "missing_axis")
+
+      assert [%{code: :invalid_field, path: "graph_group_by.g0"}] =
+               QueryContract.validate_intent(document, invalid).errors
+    end
+
+    test "graph intent validates current form fields before inactive aggregate fields" do
+      intent = %{
+        "view_mode" => "graph",
+        "group_by" => ["status"],
+        "aggregate" => [%{"field" => "customer_id", "function" => "sum"}],
+        "graph_group_by" => %{"g0" => %{"field" => "missing_axis"}},
+        "graph_aggregate" => %{"m0" => %{"field" => "status", "format" => "sum"}}
+      }
+
+      validation = QueryContract.validate_intent(query_contract_document(), intent)
+      refute validation.valid?
+      assert Enum.any?(validation.errors, &match?(%{path: "graph_group_by.g0"}, &1))
+      assert Enum.any?(validation.errors, &match?(%{path: "graph_aggregate.m0.field"}, &1))
+    end
+
     test "rejects invalid view modes" do
       document = query_contract_document()
 

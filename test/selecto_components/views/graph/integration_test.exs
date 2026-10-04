@@ -324,9 +324,9 @@ defmodule SelectoComponents.Views.Graph.IntegrationTest do
       # Test rendering with no data
       html_string = render_component(Component, empty_assigns)
 
-      # Should still render chart container
-      assert html_string =~ ~r/phx-hook=\"[^\"]*GraphComponent\"/
-      assert html_string =~ "canvas"
+      # Empty results show an explicit empty state without a chart.
+      assert html_string =~ "No Data Available"
+      refute html_string =~ "<canvas"
     end
   end
 end

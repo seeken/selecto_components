@@ -291,8 +291,8 @@ defmodule SelectoComponents.Views.Aggregate.Form do
     Enum.reject(columns, fn {_field, _name, metadata} -> component_or_link_column?(metadata) end)
   end
 
-  defp picker_id(:graph, list), do: "graph_#{list}"
-  defp picker_id(_view, list), do: to_string(list)
+  defp picker_id(:aggregate, list), do: to_string(list)
+  defp picker_id(view, list), do: "#{view}_#{list}"
 
   defp config_component_id(view, list, id), do: "#{view}-#{list}-#{id}"
 

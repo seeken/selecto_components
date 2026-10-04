@@ -7,7 +7,7 @@ defmodule SelectoComponents.QueryContract.IntentValidator do
   contract, but it does not build or run a Selecto query.
   """
 
-  @supported_view_modes ~w(detail aggregate graph map)
+  @supported_view_modes ~w(detail aggregate graph map timeseries)
   @sort_directions ~w(asc desc)
   @filter_field_keys [:field, :id, :filter]
   @comparator_keys [:comparator, :comp, :operator, :op]
@@ -155,9 +155,10 @@ defmodule SelectoComponents.QueryContract.IntentValidator do
       validate_order_by(intent, indexes)
   end
 
-  defp validate_mode_intent("graph", intent, indexes) do
-    validate_groupable_fields(intent, indexes, [:group_by, :x_axis], "group_by") ++
-      validate_metrics(intent, indexes, [:aggregate, :metrics, :y_axis]) ++
+  defp validate_mode_intent(view_mode, intent, indexes)
+       when view_mode in ["graph", "timeseries"] do
+    validate_groupable_fields(intent, indexes, [:graph_group_by, :group_by, :x_axis], "group_by") ++
+      validate_metrics(intent, indexes, [:graph_aggregate, :aggregate, :metrics, :y_axis]) ++
       validate_groupable_fields(intent, indexes, [:series], "series") ++
       validate_filters(intent, indexes)
   end

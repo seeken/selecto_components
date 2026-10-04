@@ -505,6 +505,36 @@ defmodule SelectoComponents.Views.Aggregate.ProcessTest do
            ]
   end
 
+  defmodule NoRollupAdapter do
+    def supports?(_feature), do: false
+  end
+
+  test "aggregate uses ordinary grouping when the adapter has no rollup support" do
+    columns = %{
+      "category_id" => %{name: "Category", type: :integer, colid: "category_id"},
+      "id" => %{name: "ID", type: :integer, colid: "id"}
+    }
+
+    {view_set, _meta} =
+      Process.view(
+        nil,
+        %{
+          "group_by" => %{"g0" => %{"field" => "category_id", "index" => "0"}},
+          "aggregate" => %{"a0" => %{"field" => "id", "index" => "0", "format" => "count"}}
+        },
+        columns,
+        [],
+        %{uuid_join_selecto() | adapter: NoRollupAdapter}
+      )
+
+    assert view_set.group_by == [{:field, "category_id", "Category"}]
+
+    assert view_set.selected == [
+             {:field, "category_id", "Category"},
+             {:field, {:count, "id"}, "ID Count"}
+           ]
+  end
+
   test "grid uses ordinary grouping and preserves database nulls without text sentinels" do
     columns = %{"city" => %{name: "City", type: :string, colid: "city"}}
 

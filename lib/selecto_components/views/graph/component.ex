@@ -81,7 +81,7 @@ defmodule SelectoComponents.Views.Graph.Component do
 
   defp render_no_results_state(assigns) do
     ~H"""
-    <div class="flex h-64 items-center justify-center rounded-lg border" style="background: var(--sc-danger-soft); border-color: color-mix(in srgb, var(--sc-danger) 35%, var(--sc-surface-border)); color: var(--sc-danger);">
+    <div class="flex h-64 items-center justify-center rounded-lg border" style="background: var(--sc-surface-bg); border-color: var(--sc-surface-border); color: var(--sc-text-secondary);">
       <div class="text-center">
         <div class="text-4xl mb-2">📊</div>
         <div class="font-semibold">No Data Available</div>
@@ -106,6 +106,14 @@ defmodule SelectoComponents.Views.Graph.Component do
   end
 
   defp render_chart(assigns, results, aliases) do
+    if Enum.all?(results, fn row -> Enum.all?(row, &is_nil/1) end) do
+      render_no_results_state(assigns)
+    else
+      render_populated_chart(assigns, results, aliases)
+    end
+  end
+
+  defp render_populated_chart(assigns, results, aliases) do
     # Transform query results into chart data
     chart_data = prepare_chart_data(assigns, results, aliases)
     chart_options = prepare_chart_options(assigns)
