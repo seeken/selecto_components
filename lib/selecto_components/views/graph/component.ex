@@ -1185,26 +1185,18 @@ defmodule SelectoComponents.Views.Graph.Component do
 
   def generate_color(index, alpha) do
     colors = [
-      # blue
-      "59, 130, 246",
-      # green
-      "16, 185, 129",
-      # red
-      "245, 101, 101",
-      # yellow
-      "251, 191, 36",
-      # purple
-      "139, 92, 246",
-      # pink
-      "236, 72, 153",
-      # cyan
-      "6, 182, 212",
-      # orange
-      "251, 146, 60",
-      # lime
-      "34, 197, 94",
-      # violet
-      "168, 85, 247"
+      "85, 214, 190",
+      "91, 143, 249",
+      "246, 189, 22",
+      "232, 104, 74",
+      "146, 112, 202",
+      "109, 200, 236",
+      "255, 157, 77",
+      "38, 154, 153",
+      "255, 153, 195",
+      "93, 112, 146",
+      "240, 139, 180",
+      "120, 211, 248"
     ]
 
     color = Enum.at(colors, rem(index, length(colors)))

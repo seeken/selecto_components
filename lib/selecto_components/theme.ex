@@ -104,6 +104,21 @@ defmodule SelectoComponents.Theme do
   def stylesheet do
     """
     @layer components {
+      .sc-pick-tone-0 { --sc-pick-accent: #4c9acc; }
+      .sc-pick-tone-1 { --sc-pick-accent: #d89149; }
+      .sc-pick-tone-2 { --sc-pick-accent: #809c46; }
+      .sc-pick-tone-3 { --sc-pick-accent: #a980c5; }
+      .sc-pick-tone-4 { --sc-pick-accent: #d36d86; }
+      .sc-pick-tone-5 { --sc-pick-accent: #47a99f; }
+      .sc-pick-tone-6 { --sc-pick-accent: #c29042; }
+      .sc-pick-tone-7 { --sc-pick-accent: #6990cb; }
+
+      @media (max-width: 640px) {
+        .sc-theme-root [data-list-picker-root] {
+          grid-template-columns: minmax(0, 1fr) !important;
+        }
+      }
+
       :where(.sc-theme-root) {
         background: var(--sc-surface-bg);
         color: var(--sc-text-primary);

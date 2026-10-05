@@ -10,6 +10,7 @@ defmodule SelectoComponents.Components.ListPicker do
   """
   use Phoenix.LiveComponent
 
+  import Bitwise
   import SelectoComponents.Components.Common
   alias SelectoComponents.Theme
 
@@ -51,6 +52,10 @@ defmodule SelectoComponents.Components.ListPicker do
       |> assign(available: sorted_available)
       |> assign_available_groups(sorted_available)
       |> assign(type_filters: available_type_filters(sorted_available))
+      |> assign(
+        picked_fields:
+          MapSet.new(assigns.selected_items, fn {_id, item, _conf} -> field_id_string(item) end)
+      )
       |> assign(component_dom_id: "list-picker-#{assigns.id}")
 
     ~H"""
@@ -147,11 +152,12 @@ defmodule SelectoComponents.Components.ListPicker do
             data-view-id={@view_id}
             data-list-id={@fieldname}
             data-item-id={id}
+            data-picker-field={field_id_string(id)}
             data-type-key={normalize_icon_key(field_type)}
             data-search-text={name}
             data-available-item
-            class="w-full min-w-0 cursor-pointer rounded-lg border px-3 py-2 text-left text-sm transition"
-            style="border-color: var(--sc-surface-border); background: var(--sc-surface-bg); color: var(--sc-text-primary);"
+            class={["w-full min-w-0 cursor-pointer rounded-lg border px-3 py-2 text-left text-sm transition", picked_class(id, @picked_fields)]}
+            style={picker_card_style(MapSet.member?(@picked_fields, field_id_string(id)))}
           >
             <div class="flex items-start gap-2">
               <.type_badge type={field_type} />
@@ -198,11 +204,12 @@ defmodule SelectoComponents.Components.ListPicker do
                 data-view-id={@view_id}
                 data-list-id={@fieldname}
                 data-item-id={item.id}
+                data-picker-field={field_id_string(item.id)}
                 data-type-key={normalize_icon_key(item.field_type)}
                 data-search-text={item.search_name}
                 data-available-item
-                class="w-full min-w-0 cursor-pointer rounded-lg border px-3 py-2 text-left text-sm transition"
-                style="border-color: var(--sc-surface-border); background: var(--sc-surface-bg); color: var(--sc-text-primary);"
+                class={["w-full min-w-0 cursor-pointer rounded-lg border px-3 py-2 text-left text-sm transition", picked_class(item.id, @picked_fields)]}
+                style={picker_card_style(MapSet.member?(@picked_fields, field_id_string(item.id)))}
               >
                 <div class="flex items-start gap-2">
                   <.type_badge type={item.field_type} />
@@ -265,10 +272,11 @@ defmodule SelectoComponents.Components.ListPicker do
               phx-hook=".ListPickerEditor"
               data-picker-item-id={id}
               data-selected-item
+              data-picker-field={field_id_string(item)}
               tabindex="0"
               aria-label={"Selected item #{selected_item_label(item)}"}
-              class="w-full rounded-xl border px-3 py-2 shadow-sm transition"
-              style="border-color: var(--sc-surface-border); background: color-mix(in srgb, var(--sc-surface-bg-alt) 65%, var(--sc-surface-bg)); color: var(--sc-text-primary);"
+              class={["w-full rounded-xl border px-3 py-2 shadow-sm transition", "sc-is-picked", picker_tone_class(item)]}
+              style={picker_card_style(true)}
             >
               <% selected_type = selected_item_type(@available, item) %>
               <div class="flex items-center gap-3">
@@ -1711,6 +1719,39 @@ defmodule SelectoComponents.Components.ListPicker do
 
   defp picker_pane_max_height(true, _override), do: "18rem"
   defp picker_pane_max_height(_compact, _override), do: "24rem"
+
+  # Match the Perl field-identity hints, independent of selection order or UUID.
+  # JavaScript charCodeAt(0) uses the first UTF-16 unit for supplementary characters.
+  defp picker_tone_class(item) do
+    hash =
+      item
+      |> field_id_string()
+      |> String.to_charlist()
+      |> Enum.reduce(2_166_136_261, fn codepoint, hash ->
+        unit = if codepoint > 0xFFFF, do: 0xD800 + bsr(codepoint - 0x10000, 10), else: codepoint
+        band(bxor(hash, unit) * 16_777_619, 0xFFFFFFFF)
+      end)
+
+    "sc-pick-tone-#{rem(bxor(hash, bsr(hash, 16)), 8)}"
+  end
+
+  defp picked_class(item, picked_fields) do
+    if MapSet.member?(picked_fields, field_id_string(item)),
+      do: ["sc-is-picked", picker_tone_class(item)],
+      else: []
+  end
+
+  defp picker_card_style(picked?) do
+    base = "border-color: var(--sc-surface-border); color: var(--sc-text-primary);"
+
+    if picked? do
+      base <>
+        " background: color-mix(in srgb, var(--sc-surface-bg) 82%, var(--sc-pick-accent));" <>
+        " box-shadow: inset 3px 0 var(--sc-pick-accent);"
+    else
+      base <> " background: var(--sc-surface-bg);"
+    end
+  end
 
   defp selected_item_type(available, item) do
     item_str = field_id_string(item)

@@ -533,12 +533,12 @@ defmodule SelectoComponents.Views.Graph.ComponentTest do
     end
 
     test "cycles through color palette" do
-      # Test that colors cycle after 10 (the palette size)
+      # Test that colors cycle after 12 (the shared palette size)
       color_0 = Component.generate_color(0, 1.0)
-      color_10 = Component.generate_color(10, 1.0)
+      color_12 = Component.generate_color(12, 1.0)
 
       # Should be the same color
-      assert color_0 == color_10
+      assert color_0 == color_12
     end
 
     test "respects alpha parameter" do

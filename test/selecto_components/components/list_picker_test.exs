@@ -24,6 +24,41 @@ defmodule SelectoComponents.Components.ListPickerTest do
     Map.merge(base, overrides)
   end
 
+  test "field hints match Perl and stay attached to the field after reordering" do
+    selected = [{"first", "source.id", %{}}, {"second", {"count", "source.name"}, %{}}]
+
+    available = [
+      {"source.id", "Id", :integer},
+      {"source.name", "Name", :string},
+      {"source.😀", "Unicode", :string}
+    ]
+
+    for items <- [selected, Enum.reverse(selected)] do
+      html =
+        render_component(ListPicker, base_assigns(%{available: available, selected_items: items}))
+
+      document = LazyHTML.from_fragment(html)
+
+      for {field, tone} <- [{"source.id", "4"}, {"source.name", "5"}] do
+        cards = LazyHTML.query(document, ~s([data-picker-field="#{field}"]))
+        assert length(LazyHTML.to_tree(cards)) == 2
+
+        assert Enum.all?(
+                 LazyHTML.attribute(cards, "class"),
+                 &String.contains?(&1, "sc-pick-tone-#{tone}")
+               )
+      end
+    end
+
+    html =
+      render_component(
+        ListPicker,
+        base_assigns(%{available: available, selected_items: [{"unicode", "source.😀", %{}}]})
+      )
+
+    assert html =~ "sc-pick-tone-3"
+  end
+
   test "renders a two-pane layout where available stays narrow and selected expands" do
     html =
       render_component(
