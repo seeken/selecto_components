@@ -47,11 +47,11 @@ defmodule SelectoComponents.MixProject do
       {:phoenix_live_view, "~> 1.1.4 or ~> 1.2.0"},
       # {:phoenix_html_helpers, "~> 1.0"},
       ecosystem_dep(:selecto, "selecto",
-        ref: "e24b60d50c1ad1741691d3f79f47a1b6dc1346ef",
+        ref: "9e0e389b425e3f31e751d99556286b0ea7e1bc62",
         override: true
       ),
       ecosystem_dep(:selecto_templates, "selecto_templates",
-        ref: "7f853dd1491bb91e508f64518ff5094198413c0c"
+        ref: "9da36fcc766ab03dc68a5ab38a911794df141911"
       ),
       {:uuid, "~> 1.1"},
       {:ex_doc, "~> 0.29.1", only: :dev, runtime: false},
