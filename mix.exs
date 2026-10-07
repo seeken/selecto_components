@@ -51,7 +51,7 @@ defmodule SelectoComponents.MixProject do
         override: true
       ),
       ecosystem_dep(:selecto_templates, "selecto_templates",
-        ref: "6648b1d0fa300ca8e914534dc49bafb42836dd31"
+        ref: "ea9c796f06b14a53fb614f607a4d7beb90f01ba8"
       ),
       {:uuid, "~> 1.1"},
       {:ex_doc, "~> 0.29.1", only: :dev, runtime: false},
