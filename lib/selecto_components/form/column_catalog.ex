@@ -22,13 +22,15 @@ defmodule SelectoComponents.Form.ColumnCatalog do
     cte_names = available_cte_names(selecto)
     choice_source_metadata = choice_source_metadata_by_field(selecto)
     query_surfaces = query_surface_by_field(selecto)
+    private_fields = QueryContract.private_field_ids(selecto)
 
     selecto
     |> picker_selecto()
     |> Selecto.columns()
     |> Enum.filter(fn {colid, column} ->
       column_allows? =
-        Map.get(column, :selectable, true) and Map.get(column, :internal, false) != true
+        Map.get(column, :selectable, true) and Map.get(column, :internal, false) != true and
+          not MapSet.member?(private_fields, to_string(colid))
 
       surface_allows? =
         query_surfaces

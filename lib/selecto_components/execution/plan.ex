@@ -37,7 +37,6 @@ defmodule SelectoComponents.Execution.Plan do
   @type t :: %__MODULE__{}
 
   @scope_baseline_assign :selecto_scope_baseline
-  @filter_alias_keys ~w(field id comparator operator op)
 
   @spec build(map(), Phoenix.LiveView.Socket.t()) :: t()
   def build(params, socket) when is_map(params) do
@@ -205,19 +204,11 @@ defmodule SelectoComponents.Execution.Plan do
       |> Map.get("filters", %{})
       |> Map.values()
       |> Enum.filter(&(is_map(&1) and Map.get(&1, "is_section") not in ["Y", true, "true"]))
-      |> Enum.map(&executed_filter_intent/1)
 
     params
     |> Map.put("filters", filters)
     |> put_sort_intent(sort_by)
   end
-
-  # The filter builder reads only "filter" and "comp", so validate exactly
-  # those keys rather than an alias the validator would otherwise prefer.
-  defp executed_filter_intent(%{"filter" => _field} = filter),
-    do: Map.drop(filter, @filter_alias_keys)
-
-  defp executed_filter_intent(filter), do: filter
 
   # Column sorting replaces the query's order_by in every view mode.
   defp put_sort_intent(intent, [_ | _] = sort_by),

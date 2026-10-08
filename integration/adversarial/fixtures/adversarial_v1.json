@@ -1,0 +1,1853 @@
+{
+  "domain": {
+    "schema_version": 1,
+    "name": "CertificationAdversarialPeople",
+    "source": {
+      "source_table": "selecto_cert_adv_people",
+      "primary_key": "id",
+      "tenant_field": "tenant_id",
+      "fields": [
+        "id",
+        "tenant_id",
+        "name",
+        "secret_score",
+        "ssn",
+        "amount"
+      ],
+      "redact_fields": [
+        "ssn"
+      ],
+      "columns": {
+        "id": {
+          "type": "integer"
+        },
+        "tenant_id": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "secret_score": {
+          "type": "integer",
+          "internal": true
+        },
+        "ssn": {
+          "type": "string"
+        },
+        "amount": {
+          "type": "integer",
+          "filterable": false,
+          "sortable": false,
+          "groupable": false
+        }
+      },
+      "associations": {}
+    },
+    "schemas": {
+      "order": {
+        "source_table": "selecto_cert_adv_orders",
+        "primary_key": "id",
+        "tenant_field": "tenant_id",
+        "fields": [
+          "id",
+          "tenant_id",
+          "person_id",
+          "total",
+          "state"
+        ],
+        "redact_fields": [],
+        "columns": {
+          "id": {
+            "type": "integer"
+          },
+          "tenant_id": {
+            "type": "integer"
+          },
+          "person_id": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "associations": {}
+      }
+    },
+    "joins": {},
+    "query_members": {
+      "ctes": {
+        "order_totals": {
+          "source": "order",
+          "query": {
+            "select": [
+              "person_id",
+              {
+                "as": "orders",
+                "aggregate": "count"
+              },
+              {
+                "as": "spent",
+                "aggregate": "sum",
+                "field": "total"
+              }
+            ],
+            "group_by": [
+              "person_id"
+            ]
+          },
+          "join": {
+            "owner_key": "id",
+            "related_key": "person_id",
+            "type": "left"
+          }
+        }
+      },
+      "laterals": {
+        "latest_order": {
+          "source": "order",
+          "query": {
+            "select": [
+              "id",
+              "total"
+            ],
+            "order_by": [
+              [
+                "id",
+                "desc"
+              ]
+            ],
+            "limit": 1
+          },
+          "correlations": {
+            "person_id": "id"
+          },
+          "join_type": "left"
+        }
+      }
+    },
+    "domain_version": "1.0.0",
+    "domain_fingerprint": "sha256:certification-adversarial-v1",
+    "writes": {
+      "operations": {
+        "insert": {
+          "enabled": true
+        },
+        "update": {
+          "enabled": true,
+          "bulk": true
+        },
+        "delete": {
+          "enabled": true,
+          "bulk": true
+        },
+        "upsert": {
+          "enabled": true,
+          "conflict_targets": [
+            [
+              "tenant_id",
+              "id"
+            ]
+          ]
+        }
+      },
+      "fields": {
+        "id": {
+          "insertable": true
+        },
+        "tenant_id": {
+          "insertable": true,
+          "updatable": true
+        },
+        "name": {
+          "insertable": true,
+          "updatable": true
+        },
+        "amount": {
+          "insertable": true,
+          "updatable": true
+        }
+      },
+      "scope": {
+        "tenant": {
+          "required": true,
+          "field": "tenant_id",
+          "satisfied_by": [
+            "trusted_context"
+          ]
+        }
+      }
+    }
+  },
+  "dataset": {
+    "people": {
+      "columns": [
+        "id",
+        "tenant_id",
+        "name",
+        "secret_score",
+        "ssn",
+        "amount"
+      ],
+      "rows": [
+        [
+          1,
+          7,
+          "alpha",
+          100,
+          "ssn-secret-1",
+          10
+        ],
+        [
+          2,
+          7,
+          "beta",
+          101,
+          "ssn-secret-2",
+          20
+        ],
+        [
+          3,
+          7,
+          "' OR 1=1 --",
+          102,
+          "ssn-secret-3",
+          30
+        ],
+        [
+          4,
+          7,
+          "100%_[a]\\$1?@p1🙂‮ʼ",
+          103,
+          "ssn-secret-4",
+          40
+        ],
+        [
+          8,
+          8,
+          "alpha",
+          808,
+          "ssn-secret-8",
+          90000
+        ],
+        [
+          9,
+          8,
+          "foreign-only",
+          909,
+          "ssn-secret-9",
+          100000
+        ]
+      ]
+    },
+    "orders": {
+      "columns": [
+        "id",
+        "tenant_id",
+        "person_id",
+        "total",
+        "state"
+      ],
+      "rows": [
+        [
+          101,
+          7,
+          1,
+          10,
+          "open"
+        ],
+        [
+          102,
+          7,
+          1,
+          15,
+          "closed"
+        ],
+        [
+          103,
+          7,
+          2,
+          30,
+          "open"
+        ],
+        [
+          201,
+          8,
+          1,
+          9999,
+          "open"
+        ],
+        [
+          202,
+          8,
+          2,
+          8888,
+          "closed"
+        ]
+      ]
+    }
+  },
+  "trusted_tenant": 7,
+  "trusted_scope": null,
+  "variants": [
+    {
+      "variant": "out_of_scope_changed",
+      "dataset": {
+        "people": {
+          "columns": [
+            "id",
+            "tenant_id",
+            "name",
+            "secret_score",
+            "ssn",
+            "amount"
+          ],
+          "rows": [
+            [
+              1,
+              7,
+              "alpha",
+              100,
+              "ssn-secret-1",
+              10
+            ],
+            [
+              2,
+              7,
+              "beta",
+              101,
+              "ssn-secret-2",
+              20
+            ],
+            [
+              3,
+              7,
+              "' OR 1=1 --",
+              102,
+              "ssn-secret-3",
+              30
+            ],
+            [
+              4,
+              7,
+              "100%_[a]\\$1?@p1🙂‮ʼ",
+              103,
+              "ssn-secret-4",
+              40
+            ],
+            [
+              8,
+              8,
+              "changed-foreign",
+              -808,
+              "changed-foreign-ssn",
+              1
+            ],
+            [
+              10,
+              8,
+              "new-foreign",
+              -1010,
+              "new-foreign-ssn",
+              777777
+            ]
+          ]
+        },
+        "orders": {
+          "columns": [
+            "id",
+            "tenant_id",
+            "person_id",
+            "total",
+            "state"
+          ],
+          "rows": [
+            [
+              101,
+              7,
+              1,
+              10,
+              "open"
+            ],
+            [
+              102,
+              7,
+              1,
+              15,
+              "closed"
+            ],
+            [
+              103,
+              7,
+              2,
+              30,
+              "open"
+            ],
+            [
+              301,
+              8,
+              1,
+              777777,
+              "closed"
+            ],
+            [
+              302,
+              8,
+              2,
+              555555,
+              "open"
+            ],
+            [
+              303,
+              8,
+              4,
+              666666,
+              "open"
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "variant": "secrets_changed",
+      "dataset": {
+        "people": {
+          "columns": [
+            "id",
+            "tenant_id",
+            "name",
+            "secret_score",
+            "ssn",
+            "amount"
+          ],
+          "rows": [
+            [
+              1,
+              7,
+              "alpha",
+              -100,
+              "replaced-1",
+              10
+            ],
+            [
+              2,
+              7,
+              "beta",
+              -101,
+              "replaced-2",
+              20
+            ],
+            [
+              3,
+              7,
+              "' OR 1=1 --",
+              -102,
+              "replaced-3",
+              30
+            ],
+            [
+              4,
+              7,
+              "100%_[a]\\$1?@p1🙂‮ʼ",
+              -103,
+              "replaced-4",
+              40
+            ],
+            [
+              8,
+              8,
+              "alpha",
+              -808,
+              "replaced-8",
+              90000
+            ],
+            [
+              9,
+              8,
+              "foreign-only",
+              -909,
+              "replaced-9",
+              100000
+            ]
+          ]
+        },
+        "orders": {
+          "columns": [
+            "id",
+            "tenant_id",
+            "person_id",
+            "total",
+            "state"
+          ],
+          "rows": [
+            [
+              101,
+              7,
+              1,
+              10,
+              "open"
+            ],
+            [
+              102,
+              7,
+              1,
+              15,
+              "closed"
+            ],
+            [
+              103,
+              7,
+              2,
+              30,
+              "open"
+            ],
+            [
+              201,
+              8,
+              1,
+              9999,
+              "open"
+            ],
+            [
+              202,
+              8,
+              2,
+              8888,
+              "closed"
+            ]
+          ]
+        }
+      }
+    }
+  ],
+  "cases": {
+    "AT001": [
+      {
+        "id": "or-around-scope",
+        "surface": "engine_query",
+        "intent": {
+          "select": [
+            "id",
+            "tenant_id",
+            "name"
+          ],
+          "filter": {
+            "op": "or",
+            "args": [
+              {
+                "op": "eq",
+                "field": "tenant_id",
+                "value": 8
+              },
+              {
+                "op": "gt",
+                "field": "id",
+                "value": 0
+              }
+            ]
+          },
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "not-current-tenant",
+        "surface": "engine_query",
+        "intent": {
+          "select": [
+            "id",
+            "tenant_id",
+            "name"
+          ],
+          "filter": {
+            "op": "not",
+            "arg": {
+              "op": "eq",
+              "field": "tenant_id",
+              "value": 7
+            }
+          },
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "other-tenant-equality",
+        "surface": "engine_query",
+        "intent": {
+          "select": [
+            "id",
+            "tenant_id",
+            "name"
+          ],
+          "filter": {
+            "op": "eq",
+            "field": "tenant_id",
+            "value": 8
+          },
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "mixed-tenant-in",
+        "surface": "engine_query",
+        "intent": {
+          "select": [
+            "id",
+            "tenant_id",
+            "name"
+          ],
+          "filter": {
+            "op": "in",
+            "field": "tenant_id",
+            "value": [
+              7,
+              8
+            ]
+          },
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "nested-negation",
+        "surface": "engine_query",
+        "intent": {
+          "select": [
+            "id",
+            "tenant_id",
+            "name"
+          ],
+          "filter": {
+            "op": "not",
+            "arg": {
+              "op": "and",
+              "args": [
+                {
+                  "op": "eq",
+                  "field": "tenant_id",
+                  "value": 8
+                },
+                {
+                  "op": "gt",
+                  "field": "id",
+                  "value": 0
+                }
+              ]
+            }
+          },
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      }
+    ],
+    "AT002": [
+      {
+        "id": "aggregate",
+        "surface": "engine_query",
+        "intent": {
+          "select": [
+            {
+              "aggregate": "count",
+              "as": "rows"
+            },
+            {
+              "aggregate": "sum",
+              "field": "amount",
+              "as": "total"
+            },
+            {
+              "aggregate": "avg",
+              "field": "amount",
+              "as": "average"
+            },
+            {
+              "aggregate": "min",
+              "field": "amount",
+              "as": "minimum"
+            },
+            {
+              "aggregate": "max",
+              "field": "amount",
+              "as": "maximum"
+            }
+          ]
+        }
+      },
+      {
+        "id": "grouped",
+        "surface": "engine_query",
+        "intent": {
+          "select": [
+            "tenant_id",
+            {
+              "aggregate": "count",
+              "as": "rows"
+            },
+            {
+              "aggregate": "sum",
+              "field": "amount",
+              "as": "total"
+            }
+          ],
+          "group_by": [
+            "tenant_id"
+          ],
+          "order_by": [
+            {
+              "field": "tenant_id",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "paged",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id",
+            "name"
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ],
+          "limit": 2,
+          "offset": 1
+        }
+      }
+    ],
+    "AT003": [
+      {
+        "id": "cte-totals",
+        "surface": "engine_query",
+        "intent": {
+          "members": [
+            "order_totals"
+          ],
+          "select": [
+            "id",
+            "order_totals.orders",
+            "order_totals.spent"
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      }
+    ],
+    "AT004": [
+      {
+        "id": "latest-correlated-order",
+        "surface": "engine_query",
+        "intent": {
+          "members": [
+            "latest_order"
+          ],
+          "select": [
+            "id",
+            "latest_order.id",
+            "latest_order.total"
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      }
+    ],
+    "AT005": [
+      {
+        "id": "rollup",
+        "surface": "engine_query",
+        "intent": {
+          "source": "order",
+          "select": [
+            "state",
+            {
+              "aggregate": "count",
+              "as": "rows"
+            },
+            {
+              "aggregate": "sum",
+              "field": "total",
+              "as": "total"
+            }
+          ],
+          "group_by": [
+            "state"
+          ],
+          "rollup": true,
+          "unordered": true
+        }
+      }
+    ],
+    "AF001": [
+      {
+        "id": "secret_score-select",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id",
+            "secret_score"
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "secret_score-filter",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ],
+          "filters": [
+            {
+              "field": "secret_score",
+              "op": "eq",
+              "value": 100
+            }
+          ]
+        }
+      },
+      {
+        "id": "secret_score-order",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "order_by": [
+            {
+              "field": "secret_score",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "secret_score-group",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ],
+          "group_by": [
+            "secret_score"
+          ]
+        }
+      },
+      {
+        "id": "ssn-select",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id",
+            "ssn"
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "ssn-filter",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ],
+          "filters": [
+            {
+              "field": "ssn",
+              "op": "eq",
+              "value": "ssn-secret-1"
+            }
+          ]
+        }
+      },
+      {
+        "id": "ssn-order",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "order_by": [
+            {
+              "field": "ssn",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "ssn-group",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ],
+          "group_by": [
+            "ssn"
+          ]
+        }
+      }
+    ],
+    "AF002": [
+      {
+        "id": "visible-select",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id",
+            "amount"
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "disabled-filter",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "filters": [
+            {
+              "field": "amount",
+              "op": "eq",
+              "value": 10
+            }
+          ]
+        }
+      },
+      {
+        "id": "disabled-sort",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "order_by": [
+            {
+              "field": "amount",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "disabled-group",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "amount"
+          ],
+          "group_by": [
+            "amount"
+          ]
+        }
+      },
+      {
+        "id": "public-group-control",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "tenant_id"
+          ],
+          "group_by": [
+            "tenant_id"
+          ],
+          "order_by": [
+            {
+              "field": "tenant_id",
+              "direction": "asc"
+            }
+          ]
+        }
+      }
+    ],
+    "AI001": [
+      {
+        "id": "select-fragment",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id; DROP TABLE x --"
+          ]
+        }
+      },
+      {
+        "id": "filter-fragment",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "filters": [
+            {
+              "field": "id) OR 1=1 --",
+              "op": "eq",
+              "value": 1
+            }
+          ]
+        }
+      },
+      {
+        "id": "order-fragment",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "order_by": [
+            {
+              "field": "id; SELECT pg_sleep(1)",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "unknown-field",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "missing_field"
+          ]
+        }
+      }
+    ],
+    "AI002": [
+      {
+        "id": "operator-fragment",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "filters": [
+            {
+              "field": "id",
+              "op": "eq) OR 1=1 --",
+              "value": 1
+            }
+          ]
+        }
+      },
+      {
+        "id": "direction-fragment",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "desc; SELECT 1"
+            }
+          ]
+        }
+      },
+      {
+        "id": "object-operator",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "filters": [
+            {
+              "field": "id",
+              "op": {
+                "eq": 1
+              },
+              "value": 1
+            }
+          ]
+        }
+      },
+      {
+        "id": "malformed-in",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "filters": [
+            {
+              "field": "id",
+              "op": "in",
+              "value": "1,8"
+            }
+          ]
+        }
+      },
+      {
+        "id": "malformed-between",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "filters": [
+            {
+              "field": "id",
+              "op": "between",
+              "value": [
+                1
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "AI003": [
+      {
+        "id": "literal-1",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id",
+            "name"
+          ],
+          "filters": [
+            {
+              "field": "name",
+              "op": "eq",
+              "value": "' OR 1=1 --"
+            }
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "literal-2",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id",
+            "name"
+          ],
+          "filters": [
+            {
+              "field": "name",
+              "op": "eq",
+              "value": "100%_[a]\\$1?@p1🙂‮ʼ"
+            }
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "literal-3",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id",
+            "name"
+          ],
+          "filters": [
+            {
+              "field": "name",
+              "op": "eq",
+              "value": "'; DROP TABLE selecto_cert_adv_people --"
+            }
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "literal-4",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id",
+            "name"
+          ],
+          "filters": [
+            {
+              "field": "name",
+              "op": "eq",
+              "value": "\\"
+            }
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "literal-5",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id",
+            "name"
+          ],
+          "filters": [
+            {
+              "field": "name",
+              "op": "eq",
+              "value": "$1"
+            }
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "literal-6",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id",
+            "name"
+          ],
+          "filters": [
+            {
+              "field": "name",
+              "op": "eq",
+              "value": "?"
+            }
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "literal-7",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id",
+            "name"
+          ],
+          "filters": [
+            {
+              "field": "name",
+              "op": "eq",
+              "value": "@p1"
+            }
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "literal-8",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id",
+            "name"
+          ],
+          "filters": [
+            {
+              "field": "name",
+              "op": "eq",
+              "value": "/* comment */"
+            }
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "literal-9",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id",
+            "name"
+          ],
+          "filters": [
+            {
+              "field": "name",
+              "op": "eq",
+              "value": "\"quoted\""
+            }
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      }
+    ],
+    "AT006": [
+      {
+        "id": "cross-tenant-insert",
+        "surface": "write",
+        "intent": {
+          "operation": "insert",
+          "assignments": {
+            "id": 71,
+            "tenant_id": 8,
+            "name": "must-not-exist",
+            "amount": 1
+          }
+        }
+      },
+      {
+        "id": "move-current-row",
+        "surface": "write",
+        "intent": {
+          "operation": "update",
+          "assignments": {
+            "tenant_id": 8
+          },
+          "filters": [
+            {
+              "field": "id",
+              "op": "eq",
+              "value": 1
+            }
+          ],
+          "expected_count": 1
+        }
+      },
+      {
+        "id": "cross-tenant-delete",
+        "surface": "write",
+        "intent": {
+          "operation": "delete",
+          "filters": [
+            {
+              "field": "id",
+              "op": "eq",
+              "value": 8
+            }
+          ],
+          "expected_count": 1
+        }
+      },
+      {
+        "id": "cross-tenant-upsert",
+        "surface": "write",
+        "intent": {
+          "operation": "upsert",
+          "assignments": {
+            "id": 8,
+            "tenant_id": 8,
+            "name": "must-not-overwrite",
+            "amount": 1
+          },
+          "conflict_target": [
+            "tenant_id",
+            "id"
+          ],
+          "upsert_update_fields": [
+            "tenant_id",
+            "name",
+            "amount"
+          ]
+        }
+      }
+    ],
+    "AT007": [
+      {
+        "id": "current-tenant-insert",
+        "surface": "write",
+        "intent": {
+          "operation": "insert",
+          "assignments": {
+            "id": 70,
+            "tenant_id": 7,
+            "name": "control",
+            "amount": 1
+          }
+        }
+      },
+      {
+        "id": "current-tenant-update",
+        "surface": "write",
+        "intent": {
+          "operation": "update",
+          "assignments": {
+            "name": "updated-control"
+          },
+          "filters": [
+            {
+              "field": "id",
+              "op": "eq",
+              "value": 70
+            }
+          ],
+          "expected_count": 1
+        }
+      },
+      {
+        "id": "current-tenant-delete",
+        "surface": "write",
+        "intent": {
+          "operation": "delete",
+          "filters": [
+            {
+              "field": "id",
+              "op": "eq",
+              "value": 70
+            }
+          ],
+          "expected_count": 1
+        }
+      },
+      {
+        "id": "current-tenant-upsert",
+        "surface": "write",
+        "intent": {
+          "operation": "upsert",
+          "assignments": {
+            "id": 1,
+            "tenant_id": 7,
+            "name": "trusted-upsert",
+            "amount": 10
+          },
+          "conflict_target": [
+            "tenant_id",
+            "id"
+          ],
+          "upsert_update_fields": [
+            "tenant_id",
+            "name",
+            "amount"
+          ]
+        }
+      }
+    ],
+    "AF003": [
+      {
+        "id": "secret_score-select",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id",
+            "secret_score"
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "secret_score-filter",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ],
+          "filters": [
+            {
+              "field": "secret_score",
+              "op": "eq",
+              "value": 100
+            }
+          ]
+        }
+      },
+      {
+        "id": "secret_score-order",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "order_by": [
+            {
+              "field": "secret_score",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "secret_score-group",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ],
+          "group_by": [
+            "secret_score"
+          ]
+        }
+      },
+      {
+        "id": "ssn-select",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id",
+            "ssn"
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "ssn-filter",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ],
+          "filters": [
+            {
+              "field": "ssn",
+              "op": "eq",
+              "value": "ssn-secret-1"
+            }
+          ]
+        }
+      },
+      {
+        "id": "ssn-order",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "order_by": [
+            {
+              "field": "ssn",
+              "direction": "asc"
+            }
+          ]
+        }
+      },
+      {
+        "id": "ssn-group",
+        "surface": "query",
+        "intent": {
+          "select": [
+            "id"
+          ],
+          "order_by": [
+            {
+              "field": "id",
+              "direction": "asc"
+            }
+          ],
+          "group_by": [
+            "ssn"
+          ]
+        }
+      }
+    ]
+  },
+  "case_domains": {
+    "AF003": {
+      "schema_version": 1,
+      "name": "CertificationAdversarialPeople",
+      "source": {
+        "source_table": "selecto_cert_adv_people",
+        "primary_key": "id",
+        "tenant_field": "tenant_id",
+        "fields": [
+          "id",
+          "tenant_id",
+          "name",
+          "secret_score",
+          "ssn",
+          "amount"
+        ],
+        "redact_fields": [
+          "ssn"
+        ],
+        "columns": {
+          "id": {
+            "type": "integer"
+          },
+          "tenant_id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "secret_score": {
+            "type": "integer",
+            "hidden": true
+          },
+          "ssn": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "integer",
+            "filterable": false,
+            "sortable": false,
+            "groupable": false
+          }
+        },
+        "associations": {}
+      },
+      "schemas": {
+        "order": {
+          "source_table": "selecto_cert_adv_orders",
+          "primary_key": "id",
+          "tenant_field": "tenant_id",
+          "fields": [
+            "id",
+            "tenant_id",
+            "person_id",
+            "total",
+            "state"
+          ],
+          "redact_fields": [],
+          "columns": {
+            "id": {
+              "type": "integer"
+            },
+            "tenant_id": {
+              "type": "integer"
+            },
+            "person_id": {
+              "type": "integer"
+            },
+            "total": {
+              "type": "integer"
+            },
+            "state": {
+              "type": "string"
+            }
+          },
+          "associations": {}
+        }
+      },
+      "joins": {},
+      "query_members": {
+        "ctes": {
+          "order_totals": {
+            "source": "order",
+            "query": {
+              "select": [
+                "person_id",
+                {
+                  "as": "orders",
+                  "aggregate": "count"
+                },
+                {
+                  "as": "spent",
+                  "aggregate": "sum",
+                  "field": "total"
+                }
+              ],
+              "group_by": [
+                "person_id"
+              ]
+            },
+            "join": {
+              "owner_key": "id",
+              "related_key": "person_id",
+              "type": "left"
+            }
+          }
+        },
+        "laterals": {
+          "latest_order": {
+            "source": "order",
+            "query": {
+              "select": [
+                "id",
+                "total"
+              ],
+              "order_by": [
+                [
+                  "id",
+                  "desc"
+                ]
+              ],
+              "limit": 1
+            },
+            "correlations": {
+              "person_id": "id"
+            },
+            "join_type": "left"
+          }
+        }
+      },
+      "domain_version": "1.0.0",
+      "domain_fingerprint": "sha256:certification-adversarial-v1",
+      "writes": {
+        "operations": {
+          "insert": {
+            "enabled": true
+          },
+          "update": {
+            "enabled": true,
+            "bulk": true
+          },
+          "delete": {
+            "enabled": true,
+            "bulk": true
+          },
+          "upsert": {
+            "enabled": true,
+            "conflict_targets": [
+              [
+                "tenant_id",
+                "id"
+              ]
+            ]
+          }
+        },
+        "fields": {
+          "id": {
+            "insertable": true
+          },
+          "tenant_id": {
+            "insertable": true,
+            "updatable": true
+          },
+          "name": {
+            "insertable": true,
+            "updatable": true
+          },
+          "amount": {
+            "insertable": true,
+            "updatable": true
+          }
+        },
+        "scope": {
+          "tenant": {
+            "required": true,
+            "field": "tenant_id",
+            "satisfied_by": [
+              "trusted_context"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

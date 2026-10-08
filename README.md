@@ -460,6 +460,11 @@ and register it into a host LiveView with `SelectoComponents.Views.spec/4`.
 
 ## Status
 
+The opt-in [native connected LiveView adversarial suite](integration/adversarial/README.md)
+checks real PostgreSQL rows and rendered grid cells through form, URL, paging,
+sorting, and host-scope changes. Its documentation includes exact commands and
+coverage boundaries.
+
 Current `0.4.x` scope:
 
 - core query UI flows are usable but still alpha

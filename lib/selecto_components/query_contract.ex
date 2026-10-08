@@ -98,6 +98,7 @@ defmodule SelectoComponents.QueryContract do
     with {:ok, contract, diagnostics} <- build(input) do
       document =
         contract
+        |> hide_private_fields(input)
         |> Map.put(:query_contract_version, @query_contract_version)
         |> put_contract_envelope(opts)
         |> maybe_put_actions(input, opts)
@@ -132,7 +133,7 @@ defmodule SelectoComponents.QueryContract do
   def validate_intent(input, intent, opts \\ []) do
     case query_contract_document(input, opts) do
       {:ok, document} ->
-        IntentValidator.validate(document, intent, opts)
+        IntentValidator.validate(validation_field_contract(document, input), intent, opts)
 
       {:error, diagnostics} ->
         %{
@@ -160,6 +161,92 @@ defmodule SelectoComponents.QueryContract do
     |> Map.put(:params_schema, params_schema_document(opts))
     |> Map.put(:examples, Keyword.get(opts, :examples, []))
     |> Map.put(:errors, Keyword.get(opts, :errors, @default_errors))
+  end
+
+  # Neutral contracts describe trusted authored columns. Public component
+  # validation and discovery must also honor redaction and hidden flags.
+  defp hide_private_fields(contract, input) do
+    hidden = private_field_ids(input)
+
+    contract
+    |> Map.update(
+      :fields,
+      [],
+      &Enum.reject(&1, fn field -> MapSet.member?(hidden, to_string(map_value(field, :id))) end)
+    )
+    |> Map.update(
+      :filters,
+      [],
+      &Enum.reject(&1, fn filter ->
+        MapSet.member?(hidden, to_string(map_value(filter, :field)))
+      end)
+    )
+  end
+
+  @doc false
+  def private_field_ids(input) do
+    domain = query_contract_input(input)
+    domain = if is_map(map_value(domain, :domain)), do: map_value(domain, :domain), else: domain
+    source = map_value(domain, :source, %{})
+    columns = Map.merge(map_value(source, :columns, %{}), map_value(domain, :columns, %{}))
+
+    redacted =
+      List.wrap(map_value(source, :redact_fields, [])) ++
+        List.wrap(map_value(domain, :redact_fields, []))
+
+    private = private_column_ids(columns, redacted)
+
+    related =
+      domain
+      |> map_value(:schemas, %{})
+      |> Enum.flat_map(fn {id, definition} ->
+        private_column_ids(
+          map_value(definition, :columns, %{}),
+          List.wrap(map_value(definition, :redact_fields, []))
+        )
+        |> Enum.map(&(to_string(id) <> "." <> &1))
+      end)
+
+    MapSet.new(private ++ Enum.map(private, &("source." <> &1)) ++ related)
+  end
+
+  # Preserve documented role-specific denials while keeping private descriptors
+  # out of the published document. These descriptors never authorize a role.
+  defp validation_field_contract(document, input) do
+    hidden = private_field_ids(input)
+
+    case build(input) do
+      {:ok, contract, _diagnostics} ->
+        denied =
+          contract
+          |> map_value(:fields, [])
+          |> Enum.filter(&MapSet.member?(hidden, to_string(map_value(&1, :id))))
+          |> Enum.map(fn field ->
+            Enum.reduce(
+              [:detail_selectable, :filterable, :sortable, :groupable, :aggregatable],
+              field,
+              fn key, denied_field -> Map.put(denied_field, key, false) end
+            )
+            |> Map.put(:comparators, [])
+            |> Map.put(:aggregate_functions, [])
+            |> json_safe()
+          end)
+
+        Map.update(document, "fields", denied, &(&1 ++ denied))
+
+      {:error, _diagnostics} ->
+        document
+    end
+  end
+
+  defp private_column_ids(columns, redacted) do
+    columns
+    |> Enum.filter(fn {_id, config} ->
+      map_value(config, :internal) == true or map_value(config, :hidden) == true
+    end)
+    |> Enum.map(fn {id, _config} -> to_string(id) end)
+    |> Enum.concat(Enum.map(redacted, &to_string/1))
+    |> Enum.uniq()
   end
 
   defp maybe_put_form_metadata(contract, opts) do
