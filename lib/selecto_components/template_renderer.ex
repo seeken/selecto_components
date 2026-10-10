@@ -234,10 +234,99 @@ defmodule SelectoComponents.TemplateRenderer do
     end
   end
 
+  defp render_node(
+         %{
+           "kind" => "repeat",
+           "node_id" => node_id,
+           "each" => %{"kind" => "binding", "type" => "rows", "expression" => each},
+           "as" => name,
+           "children" => children,
+           "empty" => empty
+         },
+         context,
+         registry
+       )
+       when is_binary(node_id) and is_binary(each) and is_binary(name) and is_list(children) and
+              is_list(empty) do
+    case repeat_rows(each, context, node_id) do
+      {:ok, nil} ->
+        {:ok, {:safe, []}}
+
+      {:ok, []} ->
+        render_nodes(empty, context, registry)
+
+      {:ok, rows} ->
+        render_repeat_rows(rows, name, children, context, registry)
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
   defp render_node(node, _context, _registry) do
     node_id = if is_map(node), do: node["node_id"], else: nil
     {:error, diagnostic("invalid_render_node", "compiled render node is invalid", node_id)}
   end
+
+  # Rows come from a source's public rows, or from a collection of an enclosing
+  # repeat's row. An unloaded source yields nil, which renders nothing.
+  defp repeat_rows(each, context, node_id) do
+    case String.split(each, ".") do
+      [source, "rows"] when is_map_key(context.sources, source) ->
+        {:ok, context.sources[source]}
+
+      [item, collection] when is_map_key(context.items, item) ->
+        case resolve_path(context.items[item], [collection]) do
+          rows when is_list(rows) or is_nil(rows) -> {:ok, rows}
+          _other -> unsupported_expression(node_id)
+        end
+
+      _other ->
+        unsupported_expression(node_id)
+    end
+  end
+
+  # Each row renders the repeat's children with the row bound to the repeat
+  # name and every node identity suffixed with `.row.<index>`, so DOM ids stay
+  # unique across rows and nested repeats.
+  defp render_repeat_rows(rows, name, children, context, registry) do
+    rows
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn {row, index}, {:ok, chunks} ->
+      row_context = %{context | items: Map.put(context.items, name, row)}
+
+      case render_nodes(suffix_node_ids(children, ".row.#{index}"), row_context, registry) do
+        {:ok, {:safe, content}} -> {:cont, {:ok, [chunks, content]}}
+        {:error, error} -> {:halt, {:error, error}}
+      end
+    end)
+    |> case do
+      {:ok, content} -> {:ok, {:safe, content}}
+      error -> error
+    end
+  end
+
+  defp suffix_node_ids(nodes, suffix) when is_list(nodes),
+    do: Enum.map(nodes, &suffix_node_ids(&1, suffix))
+
+  defp suffix_node_ids(%{} = node, suffix) do
+    Map.new(node, fn
+      {"node_id", id} when is_binary(id) ->
+        {"node_id", id <> suffix}
+
+      {key, nested} when key in ["children", "then", "else", "empty"] and is_list(nested) ->
+        {key, suffix_node_ids(nested, suffix)}
+
+      {"slots", slots} when is_map(slots) ->
+        {"slots",
+         Map.new(slots, fn {slot, nested} -> {slot, suffix_node_ids(nested, suffix)} end)}
+
+      other ->
+        other
+    end)
+  end
+
+  defp suffix_node_ids(other, _suffix), do: other
 
   defp render_slots(slots, context, registry, node_id) when is_map(slots) do
     Enum.reduce_while(slots, {:ok, %{}}, fn {name, nodes}, {:ok, rendered} ->
@@ -435,7 +524,8 @@ defmodule SelectoComponents.TemplateRenderer do
        sources: source_results,
        source_totals: source_totals,
        source_ready: source_ready,
-       source_page_sizes: source_page_sizes
+       source_page_sizes: source_page_sizes,
+       items: %{}
      }}
   end
 
@@ -536,6 +626,9 @@ defmodule SelectoComponents.TemplateRenderer do
           context.source_ready[source] -> unsupported_expression(node_id)
           true -> {:ok, nil}
         end
+
+      [item | path] when path != [] and is_map_key(context.items, item) ->
+        {:ok, resolve_path(context.items[item], path)}
 
       [input | path] when path != [] and is_map_key(context.inputs, input) ->
         {:ok, resolve_path(context.inputs[input], path)}

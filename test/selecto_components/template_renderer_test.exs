@@ -711,6 +711,67 @@ defmodule SelectoComponents.TemplateRendererTest do
     """
   end
 
+  describe "repeat" do
+    defp repeat_snapshot(orders) do
+      source =
+        case orders do
+          :unloaded -> %{"status" => "idle"}
+          rows -> %{"status" => "ready", "result" => %{"rows" => rows}}
+        end
+
+      %{
+        "instance_id" => "repeat-case",
+        "inputs" => %{},
+        "state" => %{},
+        "sources" => %{"orders" => source}
+      }
+    end
+
+    test "renders each row and nested collection with unique node identities" do
+      manifest = fixture("repeat-orders.compile.json")
+
+      rows = [
+        %{"order_number" => "PO-1", "lines" => [%{"sku" => "A", "quantity" => 2}]},
+        %{"order_number" => "PO-2", "lines" => []}
+      ]
+
+      assert {:ok, safe} = TemplateRenderer.render(manifest, repeat_snapshot(rows), registry())
+      html = Phoenix.HTML.safe_to_string(safe)
+
+      assert html =~ "PO-1"
+      assert html =~ "PO-2"
+      assert html =~ "A x 2"
+      refute html =~ "No orders match."
+      # DOM ids encode "." as "-2E"; each row appends `.row.<index>`, and a
+      # nested repeat appends one suffix per level (outer, then inner).
+      assert html =~ "root-2Echildren-2E1-2Echildren-2E0-2Erow-2E0\""
+      assert html =~ "root-2Echildren-2E1-2Echildren-2E0-2Erow-2E1\""
+      assert html =~ "root-2Echildren-2E1-2Echildren-2E1-2Echildren-2E0-2Erow-2E0-2Erow-2E0\""
+    end
+
+    test "renders empty only for a loaded source without rows" do
+      manifest = fixture("repeat-orders.compile.json")
+
+      assert {:ok, empty} = TemplateRenderer.render(manifest, repeat_snapshot([]), registry())
+      assert Phoenix.HTML.safe_to_string(empty) =~ "No orders match."
+
+      assert {:ok, unloaded} =
+               TemplateRenderer.render(manifest, repeat_snapshot(:unloaded), registry())
+
+      assert Phoenix.HTML.safe_to_string(unloaded) == ""
+    end
+
+    test "escapes row values" do
+      manifest = fixture("repeat-orders.compile.json")
+      rows = [%{"order_number" => "<script>x</script>", "lines" => []}]
+
+      assert {:ok, safe} = TemplateRenderer.render(manifest, repeat_snapshot(rows), registry())
+      html = Phoenix.HTML.safe_to_string(safe)
+      refute html =~ "<script>"
+      assert html =~ "&lt;script&gt;"
+    end
+  end
+
   defp registry do
     %{
       components: %{
