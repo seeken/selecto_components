@@ -23,7 +23,9 @@ defmodule SelectoComponents.TemplateRenderer do
 
   alias Phoenix.HTML.Safe
 
-  @url_attributes ~w(href src poster action formaction xlink:href)
+  @url_attributes ~w(href src poster action formaction xlink:href cite data background)
+  # URL-list attributes have no v1 policy, so any present value is rejected.
+  @url_list_attributes ~w(srcset ping)
 
   attr(:manifest, :map, required: true)
   attr(:snapshot, :map, required: true)
@@ -640,10 +642,15 @@ defmodule SelectoComponents.TemplateRenderer do
   defp validate_component_url_policy(_props, _policy, node_id),
     do: {:error, diagnostic("invalid_render_input", "component URL policy is invalid", node_id)}
 
+  # HTML treats attribute names case-insensitively, so URL policies match by
+  # the ASCII-lowercased name.
   defp validate_url_attributes(attributes, node_id) do
-    if Enum.all?(attributes, fn
-         {name, value} when name in @url_attributes -> valid_url?(name, value)
-         _ -> true
+    if Enum.all?(attributes, fn {name, value} ->
+         case String.downcase(name, :ascii) do
+           key when key in @url_list_attributes -> is_nil(value)
+           key when key in @url_attributes -> valid_url?(key, value)
+           _ -> true
+         end
        end) do
       :ok
     else
@@ -661,7 +668,8 @@ defmodule SelectoComponents.TemplateRenderer do
             (String.starts_with?(value, ["#", "?"]) and byte_size(value) > 1)) or
          (name == "href" and
             (nonempty_scheme?(value, "mailto:") or nonempty_scheme?(value, "tel:"))) or
-         (name in ["href", "xlink:href", "src", "poster"] and web_url?(value)))
+         (name in ["href", "xlink:href", "src", "poster", "cite", "data", "background"] and
+            web_url?(value)))
   end
 
   defp valid_url?(_name, _value), do: false
