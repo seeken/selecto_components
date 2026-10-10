@@ -582,8 +582,88 @@ defmodule SelectoComponents.TemplateRenderer do
     end
   end
 
+  defp resolve_value(
+         %{
+           "kind" => "operation",
+           "type" => "boolean",
+           "operator" => operator,
+           "operands" => operands
+         },
+         context,
+         node_id
+       )
+       when is_binary(operator) and is_list(operands) do
+    evaluate(operator, operands, context, node_id)
+  end
+
   defp resolve_value(_value, _context, node_id),
     do: {:error, diagnostic("invalid_render_value", "compiled render value is invalid", node_id)}
+
+  # Expression evaluation follows the protocol: no coercion, and/or stop as
+  # soon as the result is known, equality compares JSON values exactly, and an
+  # ordering comparison with null is false.
+  defp evaluate(operator, [left, right], context, node_id) when operator in ["and", "or"] do
+    with {:ok, first} <- boolean_operand(left, context, node_id) do
+      cond do
+        operator == "and" and first == false -> {:ok, false}
+        operator == "or" and first == true -> {:ok, true}
+        true -> boolean_operand(right, context, node_id)
+      end
+    end
+  end
+
+  defp evaluate("not", [operand], context, node_id) do
+    with {:ok, value} <- boolean_operand(operand, context, node_id), do: {:ok, not value}
+  end
+
+  defp evaluate(operator, [left, right], context, node_id) when operator in ["eq", "ne"] do
+    with {:ok, a} <- resolve_value(left, context, node_id),
+         {:ok, b} <- resolve_value(right, context, node_id) do
+      equal = json_type(a) == json_type(b) and a == b
+      {:ok, if(operator == "eq", do: equal, else: not equal)}
+    end
+  end
+
+  defp evaluate(operator, [left, right], context, node_id)
+       when operator in ["lt", "le", "gt", "ge"] do
+    with {:ok, a} <- resolve_value(left, context, node_id),
+         {:ok, b} <- resolve_value(right, context, node_id) do
+      cond do
+        is_nil(a) or is_nil(b) -> {:ok, false}
+        is_integer(a) and is_integer(b) -> {:ok, compare(operator, a, b)}
+        true -> operand_type_mismatch(node_id)
+      end
+    end
+  end
+
+  defp evaluate(_operator, _operands, _context, node_id),
+    do: {:error, diagnostic("invalid_render_value", "compiled render value is invalid", node_id)}
+
+  defp boolean_operand(operand, context, node_id) do
+    case resolve_value(operand, context, node_id) do
+      {:ok, value} when is_boolean(value) -> {:ok, value}
+      {:ok, _other} -> operand_type_mismatch(node_id)
+      error -> error
+    end
+  end
+
+  defp compare("lt", a, b), do: a < b
+  defp compare("le", a, b), do: a <= b
+  defp compare("gt", a, b), do: a > b
+  defp compare("ge", a, b), do: a >= b
+
+  defp json_type(nil), do: :null
+  defp json_type(value) when is_boolean(value), do: :boolean
+  defp json_type(value) when is_number(value), do: :number
+  defp json_type(value) when is_binary(value), do: :string
+  defp json_type(value) when is_list(value), do: :array
+  defp json_type(value) when is_map(value), do: :object
+  defp json_type(_value), do: :other
+
+  defp operand_type_mismatch(node_id),
+    do:
+      {:error,
+       diagnostic("render_type_mismatch", "expression operand has the wrong type", node_id)}
 
   defp resolve_expression("present(" <> rest, context, node_id) do
     if String.ends_with?(rest, ")") do
@@ -788,6 +868,7 @@ defmodule SelectoComponents.TemplateRenderer do
   defp value_matches_type?(value, "boolean"), do: is_boolean(value)
   defp value_matches_type?(value, "integer"), do: is_integer(value)
   defp value_matches_type?(value, "rows"), do: is_list(value)
+  defp value_matches_type?(value, "null"), do: is_nil(value)
   defp value_matches_type?(value, "string"), do: is_binary(value)
   defp value_matches_type?(_value, _type), do: false
 

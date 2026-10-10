@@ -711,6 +711,55 @@ defmodule SelectoComponents.TemplateRendererTest do
     """
   end
 
+  test "expression operations follow the shared evaluation cases" do
+    %{"schema" => "selecto.template.expression-evaluation-cases.v1", "cases" => cases} =
+      "expression-evaluation.cases.json"
+      |> then(&Path.join(@fixtures, &1))
+      |> File.read!()
+      |> JSON.decode!()
+
+    for %{"name" => name, "value" => value, "state" => state, "inputs" => inputs} = test_case <-
+          cases do
+      manifest = %{
+        "sources" => [],
+        "view" => %{
+          "schema" => "selecto.template.view.v1",
+          "nodes" => [
+            %{
+              "kind" => "condition",
+              "node_id" => "root.children.0",
+              "test" => value,
+              "then" => [
+                %{"kind" => "text", "node_id" => "root.children.0.children.0", "value" => "T"}
+              ],
+              "else" => [
+                %{"kind" => "text", "node_id" => "root.children.0.else.0", "value" => "F"}
+              ]
+            }
+          ]
+        }
+      }
+
+      snapshot = %{
+        "instance_id" => "expr",
+        "inputs" => inputs,
+        "state" => state,
+        "sources" => %{}
+      }
+
+      result = TemplateRenderer.render(manifest, snapshot, registry())
+
+      case test_case do
+        %{"expected" => expected} ->
+          assert {:ok, safe} = result, name
+          assert Phoenix.HTML.safe_to_string(safe) == if(expected, do: "T", else: "F"), name
+
+        %{"error" => code} ->
+          assert {:error, %{"code" => ^code}} = result, name
+      end
+    end
+  end
+
   describe "repeat" do
     defp repeat_snapshot(orders) do
       source =
