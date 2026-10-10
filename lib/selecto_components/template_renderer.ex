@@ -17,6 +17,14 @@ defmodule SelectoComponents.TemplateRenderer do
   `:dom_id`/`:node_id` values. Callback output is passed through
   `Phoenix.HTML.Safe`, so a plain string is escaped; callbacks return HEEx or
   another explicit safe value when they intentionally produce markup.
+
+  A `form-view` renders from the snapshot's optional `"forms"` map of form id
+  to `selecto.template.form-draft.v1` draft, through `controls` callbacks keyed
+  by field type (or `"choice"` for a choice field) and `form_actions` callbacks
+  for `"add"` and `"remove"`. Those callbacks receive `:form`, `:revision`,
+  `:path` (the form-draft edit path of the current record), and the control's
+  `:field`, `:type`, `:value`, `:label`, and `:choices`, or the action's
+  `:relationship` and `:label`. A form view without a draft renders nothing.
   """
 
   use Phoenix.Component
@@ -263,9 +271,184 @@ defmodule SelectoComponents.TemplateRenderer do
     end
   end
 
+  defp render_node(
+         %{"kind" => "form_view", "node_id" => node_id, "form" => form, "children" => children},
+         %{form_scope: nil} = context,
+         registry
+       )
+       when is_binary(node_id) and is_binary(form) and is_list(children) do
+    case Map.get(context.forms, form) do
+      nil ->
+        {:ok, {:safe, []}}
+
+      %{"form_id" => ^form, "revision" => revision, "draft" => %{} = record}
+      when is_integer(revision) ->
+        scope = %{form: form, revision: revision, record: record, path: [], names: []}
+        render_nodes(children, %{context | form_scope: scope}, registry)
+
+      _other ->
+        {:error, diagnostic("invalid_render_snapshot", "form draft is invalid", node_id)}
+    end
+  end
+
+  defp render_node(
+         %{
+           "kind" => "form_control",
+           "node_id" => node_id,
+           "form" => form,
+           "owned_path" => owned_path,
+           "field" => field,
+           "type" => type,
+           "label" => label,
+           "choices" => choices
+         },
+         %{form_scope: %{form: form, names: owned_path} = scope} = context,
+         registry
+       )
+       when is_binary(node_id) and is_binary(field) and is_binary(type) do
+    callback = if is_nil(choices), do: type, else: "choice"
+
+    with {:ok, renderer} <- registry_renderer(registry, :controls, callback, node_id) do
+      invoke_renderer(
+        renderer,
+        %{
+          node_id: node_id,
+          dom_id: dom_id(context.instance_id, node_id),
+          form: form,
+          revision: scope.revision,
+          path: scope.path,
+          field: field,
+          type: type,
+          value: get_in(scope.record, ["fields", field]),
+          label: label,
+          choices: choices
+        },
+        node_id
+      )
+    end
+  end
+
+  defp render_node(
+         %{
+           "kind" => "form_rows",
+           "node_id" => node_id,
+           "form" => form,
+           "owned_path" => owned_path,
+           "children" => children
+         },
+         %{form_scope: %{form: form} = scope} = context,
+         registry
+       )
+       when is_binary(node_id) and is_list(children) do
+    with {:ok, relationship} <- form_relationship(owned_path, scope, node_id),
+         {:ok, rows} <- form_rows(scope.record, relationship, node_id) do
+      rows
+      |> Enum.reject(&(&1["intent"] == "delete"))
+      |> Enum.with_index()
+      |> Enum.reduce_while({:ok, []}, fn {row, index}, {:ok, chunks} ->
+        row_scope = %{
+          scope
+          | record: row,
+            path: scope.path ++ [relationship, row["identity"]],
+            names: owned_path
+        }
+
+        case render_nodes(
+               suffix_node_ids(children, ".row.#{index}"),
+               %{context | form_scope: row_scope},
+               registry
+             ) do
+          {:ok, {:safe, content}} -> {:cont, {:ok, [chunks, content]}}
+          {:error, error} -> {:halt, {:error, error}}
+        end
+      end)
+      |> case do
+        {:ok, content} -> {:ok, {:safe, content}}
+        error -> error
+      end
+    end
+  end
+
+  defp render_node(
+         %{
+           "kind" => "form_add",
+           "node_id" => node_id,
+           "form" => form,
+           "owned_path" => owned_path,
+           "label" => label
+         },
+         %{form_scope: %{form: form} = scope} = context,
+         registry
+       )
+       when is_binary(node_id) do
+    with {:ok, relationship} <- form_relationship(owned_path, scope, node_id) do
+      render_form_action("add", node_id, scope, relationship, label, context, registry)
+    end
+  end
+
+  defp render_node(
+         %{
+           "kind" => "form_remove",
+           "node_id" => node_id,
+           "form" => form,
+           "owned_path" => owned_path
+         },
+         %{form_scope: %{form: form, names: owned_path} = scope} = context,
+         registry
+       )
+       when is_binary(node_id) and owned_path != [] do
+    render_form_action("remove", node_id, scope, nil, nil, context, registry)
+  end
+
   defp render_node(node, _context, _registry) do
     node_id = if is_map(node), do: node["node_id"], else: nil
     {:error, diagnostic("invalid_render_node", "compiled render node is invalid", node_id)}
+  end
+
+  # A form_rows or form_add node names one owned relationship below the
+  # enclosing level; any other owned path means the manifest was altered.
+  defp form_relationship(owned_path, scope, node_id) do
+    case is_list(owned_path) and Enum.split(owned_path, -1) do
+      {names, [relationship]} when names == scope.names and is_binary(relationship) ->
+        {:ok, relationship}
+
+      _other ->
+        {:error, diagnostic("invalid_render_node", "compiled render node is invalid", node_id)}
+    end
+  end
+
+  defp form_rows(record, relationship, node_id) do
+    case get_in(record, ["owned", relationship]) do
+      nil ->
+        {:ok, []}
+
+      rows when is_list(rows) ->
+        if Enum.all?(rows, &(is_map(&1) and is_binary(&1["identity"]))),
+          do: {:ok, rows},
+          else: {:error, diagnostic("invalid_render_snapshot", "form draft is invalid", node_id)}
+
+      _other ->
+        {:error, diagnostic("invalid_render_snapshot", "form draft is invalid", node_id)}
+    end
+  end
+
+  defp render_form_action(action, node_id, scope, relationship, label, context, registry) do
+    with {:ok, renderer} <- registry_renderer(registry, :form_actions, action, node_id) do
+      invoke_renderer(
+        renderer,
+        %{
+          node_id: node_id,
+          dom_id: dom_id(context.instance_id, node_id),
+          action: action,
+          form: scope.form,
+          revision: scope.revision,
+          path: scope.path,
+          relationship: relationship,
+          label: label
+        },
+        node_id
+      )
+    end
   end
 
   # Rows come from a source's public rows, or from a collection of an enclosing
@@ -489,11 +672,12 @@ defmodule SelectoComponents.TemplateRenderer do
            "inputs" => inputs,
            "state" => state,
            "sources" => sources
-         },
+         } = snapshot,
          manifest
        )
        when is_binary(instance_id) and instance_id != "" and is_map(inputs) and is_map(state) and
-              is_map(sources) do
+              is_map(sources) and
+              (not is_map_key(snapshot, "forms") or is_map(:erlang.map_get("forms", snapshot))) do
     source_results =
       Map.new(sources, fn {name, source} ->
         result = if is_map(source), do: source["result"], else: nil
@@ -525,7 +709,9 @@ defmodule SelectoComponents.TemplateRenderer do
        source_totals: source_totals,
        source_ready: source_ready,
        source_page_sizes: source_page_sizes,
-       items: %{}
+       items: %{},
+       forms: Map.get(snapshot, "forms", %{}),
+       form_scope: nil
      }}
   end
 

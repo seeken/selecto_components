@@ -821,6 +821,127 @@ defmodule SelectoComponents.TemplateRendererTest do
     end
   end
 
+  describe "form view" do
+    defp form_snapshot(forms) do
+      %{
+        "instance_id" => "form-case",
+        "inputs" => %{"order_id" => 42},
+        "state" => %{},
+        "sources" => %{},
+        "forms" => forms
+      }
+    end
+
+    defp order_draft(lines) do
+      %{
+        "schema" => "selecto.template.form-draft.v1",
+        "form_id" => "order",
+        "revision" => 3,
+        "draft" => %{
+          "identity" => "order:42",
+          "fields" => %{"status" => "open"},
+          "owned" => %{"lines" => lines}
+        }
+      }
+    end
+
+    # JSON.decode!/1 keeps `null` labels and choices as nil.
+    defp form_fixture,
+      do: @fixtures |> Path.join("form-view-order.compile.json") |> File.read!() |> JSON.decode!()
+
+    defp form_registry do
+      control = fn assigns ->
+        "[#{assigns.type} #{Enum.join(assigns.path, "/")}:#{assigns.field}=#{assigns.value} " <>
+          "#{assigns.label} r#{assigns.revision} #{assigns.dom_id}]"
+      end
+
+      action = fn assigns ->
+        "[#{assigns.action} #{Enum.join(assigns.path, "/")} #{assigns.relationship} #{assigns.label}]"
+      end
+
+      %{
+        controls: %{"string" => control, "integer" => control},
+        form_actions: %{"add" => action, "remove" => action}
+      }
+    end
+
+    test "renders controls and actions with draft values and edit paths" do
+      manifest = form_fixture()
+
+      lines = [
+        %{
+          "identity" => "line:7",
+          "fields" => %{"sku" => "<b>A</b>", "quantity" => 2},
+          "owned" => %{
+            "allocations" => [
+              %{"identity" => "allocation:9", "fields" => %{"warehouse" => "W1"}, "owned" => %{}}
+            ]
+          }
+        },
+        %{"identity" => "line:8", "intent" => "delete", "fields" => %{}, "owned" => %{}},
+        %{
+          "identity" => "draft:1",
+          "intent" => "create",
+          "fields" => %{"sku" => "B", "quantity" => 1},
+          "owned" => %{}
+        }
+      ]
+
+      assert {:ok, safe} =
+               TemplateRenderer.render(
+                 manifest,
+                 form_snapshot(%{"order" => order_draft(lines)}),
+                 form_registry()
+               )
+
+      html = Phoenix.HTML.safe_to_string(safe)
+      assert html =~ "[string :status=open Status r3 "
+      assert html =~ "[string lines/line:7:sku=&lt;b&gt;A&lt;/b&gt; SKU r3 "
+      assert html =~ "[integer lines/line:7:quantity=2  r3 "
+      assert html =~ "[string lines/line:7/allocations/allocation:9:warehouse=W1  r3 "
+      assert html =~ "[integer lines/line:7/allocations/allocation:9:quantity=  r3 "
+      assert html =~ "[remove lines/line:7/allocations/allocation:9  ]"
+      assert html =~ "[add lines/line:7 allocations Add allocation]"
+      assert html =~ "[string lines/draft:1:sku=B SKU r3 "
+      assert html =~ "[add  lines Add line]"
+      refute html =~ "line:8"
+      # Deleted rows are skipped, so the created row renders as row 1.
+      assert html =~ "root-2Echildren-2E2-2Echildren-2E1-2Echildren-2E0-2Erow-2E1]"
+    end
+
+    test "renders nothing without a draft and rejects a mismatched draft" do
+      manifest = form_fixture()
+
+      assert {:ok, empty} = TemplateRenderer.render(manifest, form_snapshot(%{}), form_registry())
+      assert Phoenix.HTML.safe_to_string(empty) == ""
+
+      mismatched = Map.put(order_draft([]), "form_id", "other")
+
+      assert {:error, %{"code" => "invalid_render_snapshot"}} =
+               TemplateRenderer.render(
+                 manifest,
+                 form_snapshot(%{"order" => mismatched}),
+                 form_registry()
+               )
+    end
+
+    test "rejects a missing control callback and an altered owned path" do
+      manifest = form_fixture()
+      snapshot = form_snapshot(%{"order" => order_draft([])})
+
+      assert {:error, %{"code" => "unavailable_renderer"}} =
+               TemplateRenderer.render(manifest, snapshot, %{form_actions: %{}})
+
+      altered =
+        update_in(manifest, ["view", "nodes", Access.at(0), "children", Access.at(1)], fn node ->
+          Map.put(node, "owned_path", ["lines", "allocations"])
+        end)
+
+      assert {:error, %{"code" => "invalid_render_node"}} =
+               TemplateRenderer.render(altered, snapshot, form_registry())
+    end
+  end
+
   defp registry do
     %{
       components: %{
