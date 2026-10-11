@@ -255,6 +255,7 @@ defmodule SelectoComponents.Execution.PlanTest do
       source: %{
         source_table: "work_items",
         primary_key: :id,
+        tenant_field: :tenant_id,
         fields: [:id, :tenant_id],
         redact_fields: [],
         columns: %{
