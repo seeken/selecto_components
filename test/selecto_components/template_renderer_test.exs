@@ -711,6 +711,237 @@ defmodule SelectoComponents.TemplateRendererTest do
     """
   end
 
+  test "expression operations follow the shared evaluation cases" do
+    %{"schema" => "selecto.template.expression-evaluation-cases.v1", "cases" => cases} =
+      "expression-evaluation.cases.json"
+      |> then(&Path.join(@fixtures, &1))
+      |> File.read!()
+      |> JSON.decode!()
+
+    for %{"name" => name, "value" => value, "state" => state, "inputs" => inputs} = test_case <-
+          cases do
+      manifest = %{
+        "sources" => [],
+        "view" => %{
+          "schema" => "selecto.template.view.v1",
+          "nodes" => [
+            %{
+              "kind" => "condition",
+              "node_id" => "root.children.0",
+              "test" => value,
+              "then" => [
+                %{"kind" => "text", "node_id" => "root.children.0.children.0", "value" => "T"}
+              ],
+              "else" => [
+                %{"kind" => "text", "node_id" => "root.children.0.else.0", "value" => "F"}
+              ]
+            }
+          ]
+        }
+      }
+
+      snapshot = %{
+        "instance_id" => "expr",
+        "inputs" => inputs,
+        "state" => state,
+        "sources" => %{}
+      }
+
+      result = TemplateRenderer.render(manifest, snapshot, registry())
+
+      case test_case do
+        %{"expected" => expected} ->
+          assert {:ok, safe} = result, name
+          assert Phoenix.HTML.safe_to_string(safe) == if(expected, do: "T", else: "F"), name
+
+        %{"error" => code} ->
+          assert {:error, %{"code" => ^code}} = result, name
+      end
+    end
+  end
+
+  describe "repeat" do
+    defp repeat_snapshot(orders) do
+      source =
+        case orders do
+          :unloaded -> %{"status" => "idle"}
+          rows -> %{"status" => "ready", "result" => %{"rows" => rows}}
+        end
+
+      %{
+        "instance_id" => "repeat-case",
+        "inputs" => %{},
+        "state" => %{},
+        "sources" => %{"orders" => source}
+      }
+    end
+
+    test "renders each row and nested collection with unique node identities" do
+      manifest = fixture("repeat-orders.compile.json")
+
+      rows = [
+        %{"order_number" => "PO-1", "lines" => [%{"sku" => "A", "quantity" => 2}]},
+        %{"order_number" => "PO-2", "lines" => []}
+      ]
+
+      assert {:ok, safe} = TemplateRenderer.render(manifest, repeat_snapshot(rows), registry())
+      html = Phoenix.HTML.safe_to_string(safe)
+
+      assert html =~ "PO-1"
+      assert html =~ "PO-2"
+      assert html =~ "A x 2"
+      refute html =~ "No orders match."
+      # DOM ids encode "." as "-2E"; each row appends `.row.<index>`, and a
+      # nested repeat appends one suffix per level (outer, then inner).
+      assert html =~ "root-2Echildren-2E1-2Echildren-2E0-2Erow-2E0\""
+      assert html =~ "root-2Echildren-2E1-2Echildren-2E0-2Erow-2E1\""
+      assert html =~ "root-2Echildren-2E1-2Echildren-2E1-2Echildren-2E0-2Erow-2E0-2Erow-2E0\""
+    end
+
+    test "renders empty only for a loaded source without rows" do
+      manifest = fixture("repeat-orders.compile.json")
+
+      assert {:ok, empty} = TemplateRenderer.render(manifest, repeat_snapshot([]), registry())
+      assert Phoenix.HTML.safe_to_string(empty) =~ "No orders match."
+
+      assert {:ok, unloaded} =
+               TemplateRenderer.render(manifest, repeat_snapshot(:unloaded), registry())
+
+      assert Phoenix.HTML.safe_to_string(unloaded) == ""
+    end
+
+    test "escapes row values" do
+      manifest = fixture("repeat-orders.compile.json")
+      rows = [%{"order_number" => "<script>x</script>", "lines" => []}]
+
+      assert {:ok, safe} = TemplateRenderer.render(manifest, repeat_snapshot(rows), registry())
+      html = Phoenix.HTML.safe_to_string(safe)
+      refute html =~ "<script>"
+      assert html =~ "&lt;script&gt;"
+    end
+  end
+
+  describe "form view" do
+    defp form_snapshot(forms) do
+      %{
+        "instance_id" => "form-case",
+        "inputs" => %{"order_id" => 42},
+        "state" => %{},
+        "sources" => %{},
+        "forms" => forms
+      }
+    end
+
+    defp order_draft(lines) do
+      %{
+        "schema" => "selecto.template.form-draft.v1",
+        "form_id" => "order",
+        "revision" => 3,
+        "draft" => %{
+          "identity" => "order:42",
+          "fields" => %{"status" => "open"},
+          "owned" => %{"lines" => lines}
+        }
+      }
+    end
+
+    # JSON.decode!/1 keeps `null` labels and choices as nil.
+    defp form_fixture,
+      do: @fixtures |> Path.join("form-view-order.compile.json") |> File.read!() |> JSON.decode!()
+
+    defp form_registry do
+      control = fn assigns ->
+        "[#{assigns.type} #{Enum.join(assigns.path, "/")}:#{assigns.field}=#{assigns.value} " <>
+          "#{assigns.label} r#{assigns.revision} #{assigns.dom_id}]"
+      end
+
+      action = fn assigns ->
+        "[#{assigns.action} #{Enum.join(assigns.path, "/")} #{assigns.relationship} #{assigns.label}]"
+      end
+
+      %{
+        controls: %{"string" => control, "integer" => control},
+        form_actions: %{"add" => action, "remove" => action}
+      }
+    end
+
+    test "renders controls and actions with draft values and edit paths" do
+      manifest = form_fixture()
+
+      lines = [
+        %{
+          "identity" => "line:7",
+          "fields" => %{"sku" => "<b>A</b>", "quantity" => 2},
+          "owned" => %{
+            "allocations" => [
+              %{"identity" => "allocation:9", "fields" => %{"warehouse" => "W1"}, "owned" => %{}}
+            ]
+          }
+        },
+        %{"identity" => "line:8", "intent" => "delete", "fields" => %{}, "owned" => %{}},
+        %{
+          "identity" => "draft:1",
+          "intent" => "create",
+          "fields" => %{"sku" => "B", "quantity" => 1},
+          "owned" => %{}
+        }
+      ]
+
+      assert {:ok, safe} =
+               TemplateRenderer.render(
+                 manifest,
+                 form_snapshot(%{"order" => order_draft(lines)}),
+                 form_registry()
+               )
+
+      html = Phoenix.HTML.safe_to_string(safe)
+      assert html =~ "[string :status=open Status r3 "
+      assert html =~ "[string lines/line:7:sku=&lt;b&gt;A&lt;/b&gt; SKU r3 "
+      assert html =~ "[integer lines/line:7:quantity=2  r3 "
+      assert html =~ "[string lines/line:7/allocations/allocation:9:warehouse=W1  r3 "
+      assert html =~ "[integer lines/line:7/allocations/allocation:9:quantity=  r3 "
+      assert html =~ "[remove lines/line:7/allocations/allocation:9  ]"
+      assert html =~ "[add lines/line:7 allocations Add allocation]"
+      assert html =~ "[string lines/draft:1:sku=B SKU r3 "
+      assert html =~ "[add  lines Add line]"
+      refute html =~ "line:8"
+      # Deleted rows are skipped, so the created row renders as row 1.
+      assert html =~ "root-2Echildren-2E2-2Echildren-2E1-2Echildren-2E0-2Erow-2E1]"
+    end
+
+    test "renders nothing without a draft and rejects a mismatched draft" do
+      manifest = form_fixture()
+
+      assert {:ok, empty} = TemplateRenderer.render(manifest, form_snapshot(%{}), form_registry())
+      assert Phoenix.HTML.safe_to_string(empty) == ""
+
+      mismatched = Map.put(order_draft([]), "form_id", "other")
+
+      assert {:error, %{"code" => "invalid_render_snapshot"}} =
+               TemplateRenderer.render(
+                 manifest,
+                 form_snapshot(%{"order" => mismatched}),
+                 form_registry()
+               )
+    end
+
+    test "rejects a missing control callback and an altered owned path" do
+      manifest = form_fixture()
+      snapshot = form_snapshot(%{"order" => order_draft([])})
+
+      assert {:error, %{"code" => "unavailable_renderer"}} =
+               TemplateRenderer.render(manifest, snapshot, %{form_actions: %{}})
+
+      altered =
+        update_in(manifest, ["view", "nodes", Access.at(0), "children", Access.at(1)], fn node ->
+          Map.put(node, "owned_path", ["lines", "allocations"])
+        end)
+
+      assert {:error, %{"code" => "invalid_render_node"}} =
+               TemplateRenderer.render(altered, snapshot, form_registry())
+    end
+  end
+
   defp registry do
     %{
       components: %{

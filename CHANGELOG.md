@@ -5,6 +5,10 @@ CHANGES
 Unreleased
 ----------
 
+- `TemplateRenderer` renders portable form views (`form_view`,
+  `form_control`, `form_rows`, `form_add`, `form_remove`) from the snapshot's
+  `"forms"` drafts through `controls` and `form_actions` registry callbacks.
+  A missing draft renders nothing; deleted rows are skipped.
 - Added hidden selection-eligibility fields, per-action selected-ID filtering,
   and rejection of ineligible or non-visible row selection. Mutation guards
   remain mandatory; grouped/co-domain action input controls are not yet ported.

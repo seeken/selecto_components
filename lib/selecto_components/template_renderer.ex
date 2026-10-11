@@ -17,13 +17,23 @@ defmodule SelectoComponents.TemplateRenderer do
   `:dom_id`/`:node_id` values. Callback output is passed through
   `Phoenix.HTML.Safe`, so a plain string is escaped; callbacks return HEEx or
   another explicit safe value when they intentionally produce markup.
+
+  A `form-view` renders from the snapshot's optional `"forms"` map of form id
+  to `selecto.template.form-draft.v1` draft, through `controls` callbacks keyed
+  by field type (or `"choice"` for a choice field) and `form_actions` callbacks
+  for `"add"` and `"remove"`. Those callbacks receive `:form`, `:revision`,
+  `:path` (the form-draft edit path of the current record), and the control's
+  `:field`, `:type`, `:value`, `:label`, and `:choices`, or the action's
+  `:relationship` and `:label`. A form view without a draft renders nothing.
   """
 
   use Phoenix.Component
 
   alias Phoenix.HTML.Safe
 
-  @url_attributes ~w(href src poster action formaction xlink:href)
+  @url_attributes ~w(href src poster action formaction xlink:href cite data background)
+  # URL-list attributes have no v1 policy, so any present value is rejected.
+  @url_list_attributes ~w(srcset ping)
 
   attr(:manifest, :map, required: true)
   attr(:snapshot, :map, required: true)
@@ -232,10 +242,274 @@ defmodule SelectoComponents.TemplateRenderer do
     end
   end
 
+  defp render_node(
+         %{
+           "kind" => "repeat",
+           "node_id" => node_id,
+           "each" => %{"kind" => "binding", "type" => "rows", "expression" => each},
+           "as" => name,
+           "children" => children,
+           "empty" => empty
+         },
+         context,
+         registry
+       )
+       when is_binary(node_id) and is_binary(each) and is_binary(name) and is_list(children) and
+              is_list(empty) do
+    case repeat_rows(each, context, node_id) do
+      {:ok, nil} ->
+        {:ok, {:safe, []}}
+
+      {:ok, []} ->
+        render_nodes(empty, context, registry)
+
+      {:ok, rows} ->
+        render_repeat_rows(rows, name, children, context, registry)
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  defp render_node(
+         %{"kind" => "form_view", "node_id" => node_id, "form" => form, "children" => children},
+         %{form_scope: nil} = context,
+         registry
+       )
+       when is_binary(node_id) and is_binary(form) and is_list(children) do
+    case Map.get(context.forms, form) do
+      nil ->
+        {:ok, {:safe, []}}
+
+      %{"form_id" => ^form, "revision" => revision, "draft" => %{} = record}
+      when is_integer(revision) ->
+        scope = %{form: form, revision: revision, record: record, path: [], names: []}
+        render_nodes(children, %{context | form_scope: scope}, registry)
+
+      _other ->
+        {:error, diagnostic("invalid_render_snapshot", "form draft is invalid", node_id)}
+    end
+  end
+
+  defp render_node(
+         %{
+           "kind" => "form_control",
+           "node_id" => node_id,
+           "form" => form,
+           "owned_path" => owned_path,
+           "field" => field,
+           "type" => type,
+           "label" => label,
+           "choices" => choices
+         },
+         %{form_scope: %{form: form, names: owned_path} = scope} = context,
+         registry
+       )
+       when is_binary(node_id) and is_binary(field) and is_binary(type) do
+    callback = if is_nil(choices), do: type, else: "choice"
+
+    with {:ok, renderer} <- registry_renderer(registry, :controls, callback, node_id) do
+      invoke_renderer(
+        renderer,
+        %{
+          node_id: node_id,
+          dom_id: dom_id(context.instance_id, node_id),
+          form: form,
+          revision: scope.revision,
+          path: scope.path,
+          field: field,
+          type: type,
+          value: get_in(scope.record, ["fields", field]),
+          label: label,
+          choices: choices
+        },
+        node_id
+      )
+    end
+  end
+
+  defp render_node(
+         %{
+           "kind" => "form_rows",
+           "node_id" => node_id,
+           "form" => form,
+           "owned_path" => owned_path,
+           "children" => children
+         },
+         %{form_scope: %{form: form} = scope} = context,
+         registry
+       )
+       when is_binary(node_id) and is_list(children) do
+    with {:ok, relationship} <- form_relationship(owned_path, scope, node_id),
+         {:ok, rows} <- form_rows(scope.record, relationship, node_id) do
+      rows
+      |> Enum.reject(&(&1["intent"] == "delete"))
+      |> Enum.with_index()
+      |> Enum.reduce_while({:ok, []}, fn {row, index}, {:ok, chunks} ->
+        row_scope = %{
+          scope
+          | record: row,
+            path: scope.path ++ [relationship, row["identity"]],
+            names: owned_path
+        }
+
+        case render_nodes(
+               suffix_node_ids(children, ".row.#{index}"),
+               %{context | form_scope: row_scope},
+               registry
+             ) do
+          {:ok, {:safe, content}} -> {:cont, {:ok, [chunks, content]}}
+          {:error, error} -> {:halt, {:error, error}}
+        end
+      end)
+      |> case do
+        {:ok, content} -> {:ok, {:safe, content}}
+        error -> error
+      end
+    end
+  end
+
+  defp render_node(
+         %{
+           "kind" => "form_add",
+           "node_id" => node_id,
+           "form" => form,
+           "owned_path" => owned_path,
+           "label" => label
+         },
+         %{form_scope: %{form: form} = scope} = context,
+         registry
+       )
+       when is_binary(node_id) do
+    with {:ok, relationship} <- form_relationship(owned_path, scope, node_id) do
+      render_form_action("add", node_id, scope, relationship, label, context, registry)
+    end
+  end
+
+  defp render_node(
+         %{
+           "kind" => "form_remove",
+           "node_id" => node_id,
+           "form" => form,
+           "owned_path" => owned_path
+         },
+         %{form_scope: %{form: form, names: owned_path} = scope} = context,
+         registry
+       )
+       when is_binary(node_id) and owned_path != [] do
+    render_form_action("remove", node_id, scope, nil, nil, context, registry)
+  end
+
   defp render_node(node, _context, _registry) do
     node_id = if is_map(node), do: node["node_id"], else: nil
     {:error, diagnostic("invalid_render_node", "compiled render node is invalid", node_id)}
   end
+
+  # A form_rows or form_add node names one owned relationship below the
+  # enclosing level; any other owned path means the manifest was altered.
+  defp form_relationship(owned_path, scope, node_id) do
+    case is_list(owned_path) and Enum.split(owned_path, -1) do
+      {names, [relationship]} when names == scope.names and is_binary(relationship) ->
+        {:ok, relationship}
+
+      _other ->
+        {:error, diagnostic("invalid_render_node", "compiled render node is invalid", node_id)}
+    end
+  end
+
+  defp form_rows(record, relationship, node_id) do
+    case get_in(record, ["owned", relationship]) do
+      nil ->
+        {:ok, []}
+
+      rows when is_list(rows) ->
+        if Enum.all?(rows, &(is_map(&1) and is_binary(&1["identity"]))),
+          do: {:ok, rows},
+          else: {:error, diagnostic("invalid_render_snapshot", "form draft is invalid", node_id)}
+
+      _other ->
+        {:error, diagnostic("invalid_render_snapshot", "form draft is invalid", node_id)}
+    end
+  end
+
+  defp render_form_action(action, node_id, scope, relationship, label, context, registry) do
+    with {:ok, renderer} <- registry_renderer(registry, :form_actions, action, node_id) do
+      invoke_renderer(
+        renderer,
+        %{
+          node_id: node_id,
+          dom_id: dom_id(context.instance_id, node_id),
+          action: action,
+          form: scope.form,
+          revision: scope.revision,
+          path: scope.path,
+          relationship: relationship,
+          label: label
+        },
+        node_id
+      )
+    end
+  end
+
+  # Rows come from a source's public rows, or from a collection of an enclosing
+  # repeat's row. An unloaded source yields nil, which renders nothing.
+  defp repeat_rows(each, context, node_id) do
+    case String.split(each, ".") do
+      [source, "rows"] when is_map_key(context.sources, source) ->
+        {:ok, context.sources[source]}
+
+      [item, collection] when is_map_key(context.items, item) ->
+        case resolve_path(context.items[item], [collection]) do
+          rows when is_list(rows) or is_nil(rows) -> {:ok, rows}
+          _other -> unsupported_expression(node_id)
+        end
+
+      _other ->
+        unsupported_expression(node_id)
+    end
+  end
+
+  # Each row renders the repeat's children with the row bound to the repeat
+  # name and every node identity suffixed with `.row.<index>`, so DOM ids stay
+  # unique across rows and nested repeats.
+  defp render_repeat_rows(rows, name, children, context, registry) do
+    rows
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn {row, index}, {:ok, chunks} ->
+      row_context = %{context | items: Map.put(context.items, name, row)}
+
+      case render_nodes(suffix_node_ids(children, ".row.#{index}"), row_context, registry) do
+        {:ok, {:safe, content}} -> {:cont, {:ok, [chunks, content]}}
+        {:error, error} -> {:halt, {:error, error}}
+      end
+    end)
+    |> case do
+      {:ok, content} -> {:ok, {:safe, content}}
+      error -> error
+    end
+  end
+
+  defp suffix_node_ids(nodes, suffix) when is_list(nodes),
+    do: Enum.map(nodes, &suffix_node_ids(&1, suffix))
+
+  defp suffix_node_ids(%{} = node, suffix) do
+    Map.new(node, fn
+      {"node_id", id} when is_binary(id) ->
+        {"node_id", id <> suffix}
+
+      {key, nested} when key in ["children", "then", "else", "empty"] and is_list(nested) ->
+        {key, suffix_node_ids(nested, suffix)}
+
+      {"slots", slots} when is_map(slots) ->
+        {"slots",
+         Map.new(slots, fn {slot, nested} -> {slot, suffix_node_ids(nested, suffix)} end)}
+
+      other ->
+        other
+    end)
+  end
+
+  defp suffix_node_ids(other, _suffix), do: other
 
   defp render_slots(slots, context, registry, node_id) when is_map(slots) do
     Enum.reduce_while(slots, {:ok, %{}}, fn {name, nodes}, {:ok, rendered} ->
@@ -398,11 +672,12 @@ defmodule SelectoComponents.TemplateRenderer do
            "inputs" => inputs,
            "state" => state,
            "sources" => sources
-         },
+         } = snapshot,
          manifest
        )
        when is_binary(instance_id) and instance_id != "" and is_map(inputs) and is_map(state) and
-              is_map(sources) do
+              is_map(sources) and
+              (not is_map_key(snapshot, "forms") or is_map(:erlang.map_get("forms", snapshot))) do
     source_results =
       Map.new(sources, fn {name, source} ->
         result = if is_map(source), do: source["result"], else: nil
@@ -433,7 +708,10 @@ defmodule SelectoComponents.TemplateRenderer do
        sources: source_results,
        source_totals: source_totals,
        source_ready: source_ready,
-       source_page_sizes: source_page_sizes
+       source_page_sizes: source_page_sizes,
+       items: %{},
+       forms: Map.get(snapshot, "forms", %{}),
+       form_scope: nil
      }}
   end
 
@@ -490,8 +768,88 @@ defmodule SelectoComponents.TemplateRenderer do
     end
   end
 
+  defp resolve_value(
+         %{
+           "kind" => "operation",
+           "type" => "boolean",
+           "operator" => operator,
+           "operands" => operands
+         },
+         context,
+         node_id
+       )
+       when is_binary(operator) and is_list(operands) do
+    evaluate(operator, operands, context, node_id)
+  end
+
   defp resolve_value(_value, _context, node_id),
     do: {:error, diagnostic("invalid_render_value", "compiled render value is invalid", node_id)}
+
+  # Expression evaluation follows the protocol: no coercion, and/or stop as
+  # soon as the result is known, equality compares JSON values exactly, and an
+  # ordering comparison with null is false.
+  defp evaluate(operator, [left, right], context, node_id) when operator in ["and", "or"] do
+    with {:ok, first} <- boolean_operand(left, context, node_id) do
+      cond do
+        operator == "and" and first == false -> {:ok, false}
+        operator == "or" and first == true -> {:ok, true}
+        true -> boolean_operand(right, context, node_id)
+      end
+    end
+  end
+
+  defp evaluate("not", [operand], context, node_id) do
+    with {:ok, value} <- boolean_operand(operand, context, node_id), do: {:ok, not value}
+  end
+
+  defp evaluate(operator, [left, right], context, node_id) when operator in ["eq", "ne"] do
+    with {:ok, a} <- resolve_value(left, context, node_id),
+         {:ok, b} <- resolve_value(right, context, node_id) do
+      equal = json_type(a) == json_type(b) and a == b
+      {:ok, if(operator == "eq", do: equal, else: not equal)}
+    end
+  end
+
+  defp evaluate(operator, [left, right], context, node_id)
+       when operator in ["lt", "le", "gt", "ge"] do
+    with {:ok, a} <- resolve_value(left, context, node_id),
+         {:ok, b} <- resolve_value(right, context, node_id) do
+      cond do
+        is_nil(a) or is_nil(b) -> {:ok, false}
+        is_integer(a) and is_integer(b) -> {:ok, compare(operator, a, b)}
+        true -> operand_type_mismatch(node_id)
+      end
+    end
+  end
+
+  defp evaluate(_operator, _operands, _context, node_id),
+    do: {:error, diagnostic("invalid_render_value", "compiled render value is invalid", node_id)}
+
+  defp boolean_operand(operand, context, node_id) do
+    case resolve_value(operand, context, node_id) do
+      {:ok, value} when is_boolean(value) -> {:ok, value}
+      {:ok, _other} -> operand_type_mismatch(node_id)
+      error -> error
+    end
+  end
+
+  defp compare("lt", a, b), do: a < b
+  defp compare("le", a, b), do: a <= b
+  defp compare("gt", a, b), do: a > b
+  defp compare("ge", a, b), do: a >= b
+
+  defp json_type(nil), do: :null
+  defp json_type(value) when is_boolean(value), do: :boolean
+  defp json_type(value) when is_number(value), do: :number
+  defp json_type(value) when is_binary(value), do: :string
+  defp json_type(value) when is_list(value), do: :array
+  defp json_type(value) when is_map(value), do: :object
+  defp json_type(_value), do: :other
+
+  defp operand_type_mismatch(node_id),
+    do:
+      {:error,
+       diagnostic("render_type_mismatch", "expression operand has the wrong type", node_id)}
 
   defp resolve_expression("present(" <> rest, context, node_id) do
     if String.ends_with?(rest, ")") do
@@ -534,6 +892,9 @@ defmodule SelectoComponents.TemplateRenderer do
           context.source_ready[source] -> unsupported_expression(node_id)
           true -> {:ok, nil}
         end
+
+      [item | path] when path != [] and is_map_key(context.items, item) ->
+        {:ok, resolve_path(context.items[item], path)}
 
       [input | path] when path != [] and is_map_key(context.inputs, input) ->
         {:ok, resolve_path(context.inputs[input], path)}
@@ -640,10 +1001,15 @@ defmodule SelectoComponents.TemplateRenderer do
   defp validate_component_url_policy(_props, _policy, node_id),
     do: {:error, diagnostic("invalid_render_input", "component URL policy is invalid", node_id)}
 
+  # HTML treats attribute names case-insensitively, so URL policies match by
+  # the ASCII-lowercased name.
   defp validate_url_attributes(attributes, node_id) do
-    if Enum.all?(attributes, fn
-         {name, value} when name in @url_attributes -> valid_url?(name, value)
-         _ -> true
+    if Enum.all?(attributes, fn {name, value} ->
+         case String.downcase(name, :ascii) do
+           key when key in @url_list_attributes -> is_nil(value)
+           key when key in @url_attributes -> valid_url?(key, value)
+           _ -> true
+         end
        end) do
       :ok
     else
@@ -661,7 +1027,8 @@ defmodule SelectoComponents.TemplateRenderer do
             (String.starts_with?(value, ["#", "?"]) and byte_size(value) > 1)) or
          (name == "href" and
             (nonempty_scheme?(value, "mailto:") or nonempty_scheme?(value, "tel:"))) or
-         (name in ["href", "xlink:href", "src", "poster"] and web_url?(value)))
+         (name in ["href", "xlink:href", "src", "poster", "cite", "data", "background"] and
+            web_url?(value)))
   end
 
   defp valid_url?(_name, _value), do: false
@@ -687,6 +1054,7 @@ defmodule SelectoComponents.TemplateRenderer do
   defp value_matches_type?(value, "boolean"), do: is_boolean(value)
   defp value_matches_type?(value, "integer"), do: is_integer(value)
   defp value_matches_type?(value, "rows"), do: is_list(value)
+  defp value_matches_type?(value, "null"), do: is_nil(value)
   defp value_matches_type?(value, "string"), do: is_binary(value)
   defp value_matches_type?(_value, _type), do: false
 

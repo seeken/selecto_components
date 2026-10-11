@@ -141,7 +141,7 @@ defmodule SelectoComponents.TemplateNativeModel do
   end
 
   defp child_event_forms(node, event_types) do
-    Enum.reduce_while(["children", "then", "else"], {:ok, []}, fn key, {:ok, forms} ->
+    Enum.reduce_while(["children", "then", "else", "empty"], {:ok, []}, fn key, {:ok, forms} ->
       case Map.get(node, key, []) do
         children when is_list(children) ->
           case event_forms(children, event_types) do
