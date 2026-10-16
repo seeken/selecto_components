@@ -169,6 +169,68 @@ defmodule SelectoComponents.Execution.PlanTest do
     assert Selecto.applied_query_library(plan.selecto).segments == ["released_after"]
   end
 
+  defmodule ExactAdapter do
+    @moduledoc false
+    # Declares exact tenant/site comparison, as the MySQL and MariaDB adapters do.
+    def name, do: :exact_test
+    def supports?(feature), do: feature in [:exact_tenant_compare]
+    def quote_identifier(identifier), do: "`#{String.replace(identifier, "`", "``")}`"
+    def placeholder(_index), do: "?"
+  end
+
+  defmodule PlainAdapter do
+    @moduledoc false
+    def name, do: :plain_test
+    def supports?(_feature), do: false
+    def quote_identifier(identifier), do: ~s("#{identifier}")
+    def placeholder(index), do: "$#{index}"
+  end
+
+  test "the host-assigned Selecto's filters are host scope; user filters stay plain" do
+    domain = %{
+      name: "ExecutionPlanScopeTest",
+      source: %{
+        source_table: "films",
+        primary_key: :id,
+        fields: [:id, :org_key, :title],
+        redact_fields: [],
+        columns: %{
+          id: %{type: :integer, name: "ID", colid: :id},
+          org_key: %{type: :string, name: "Org", colid: :org_key},
+          title: %{type: :string, name: "Title", colid: :title}
+        },
+        associations: %{}
+      },
+      schemas: %{},
+      joins: %{}
+    }
+
+    sql = fn adapter ->
+      host =
+        domain
+        |> Selecto.configure(Selecto.Runtime.Context.new(adapter, :compile_only),
+          validate: false
+        )
+        |> Selecto.filter([{"org_key", "t1"}])
+
+      plan =
+        Plan.build(
+          filter_params("title", "=", "Alpha"),
+          Component.assign(base_socket(), :selecto, host)
+        )
+
+      plan.selecto |> Selecto.to_sql() |> elem(0)
+    end
+
+    exact = sql.(ExactAdapter)
+    # Under a case-insensitive collation 't1' would also read 'T1' and 't1 '.
+    assert exact =~ "CAST(CONVERT(selecto_root.org_key USING utf8mb4) AS BINARY)"
+    refute exact =~ "CONVERT(selecto_root.title"
+    assert exact =~ "title"
+
+    refute sql.(PlainAdapter) =~ "BINARY"
+  end
+
   defp base_socket do
     %Phoenix.LiveView.Socket{
       assigns: %{

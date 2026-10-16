@@ -148,7 +148,13 @@ defmodule SelectoComponents.Execution.Plan do
     end
   end
 
+  # The host-assigned Selecto's filters are its row scope (a site pin, a
+  # tenantless scope): they are recorded as host scope before any user filter
+  # or segment is applied, so MySQL and MariaDB compare them exactly
+  # (Selecto.Tenant.mark_host_scope/1). User filters stay the caller's.
   defp rebuild_selecto(host_selecto) do
+    host_selecto = Selecto.Tenant.mark_host_scope(host_selecto)
+
     case Selecto.tenant(host_selecto) do
       nil -> host_selecto
       _tenant -> Selecto.apply_tenant_scope(host_selecto)
