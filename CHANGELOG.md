@@ -5,6 +5,11 @@ CHANGES
 Unreleased
 ----------
 
+- Execution plans record the host-assigned Selecto's filters as host scope
+  (`Selecto.Tenant.mark_host_scope/1`) before any user filter or segment, so
+  on MySQL and MariaDB a host site pin or tenantless scope compares exactly.
+  User filters keep the collated comparison. Requires a selecto that has
+  `Selecto.Tenant.mark_host_scope/1`.
 - `TemplateRenderer` renders portable form views (`form_view`,
   `form_control`, `form_rows`, `form_add`, `form_remove`) from the snapshot's
   `"forms"` drafts through `controls` and `form_actions` registry callbacks.
