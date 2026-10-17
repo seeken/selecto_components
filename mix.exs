@@ -47,7 +47,7 @@ defmodule SelectoComponents.MixProject do
       {:phoenix_live_view, "~> 1.1.4 or ~> 1.2.0"},
       # {:phoenix_html_helpers, "~> 1.0"},
       ecosystem_dep(:selecto, "selecto",
-        ref: "c0e2a41beb8a60c869960c73f3aab5e7dd493ca0",
+        ref: "68ab41f167cb1d2f6e75206cb1ac87db2fd91c68",
         override: true
       ),
       ecosystem_dep(:selecto_templates, "selecto_templates",
