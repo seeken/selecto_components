@@ -490,7 +490,7 @@ defmodule SelectoComponents.Router do
     if selected_columns == [] do
       selecto
     else
-      Selecto.select(selecto, selected_columns)
+      Selecto.replace_select(selecto, selected_columns)
     end
   end
 

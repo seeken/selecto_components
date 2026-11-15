@@ -1,4 +1,9 @@
 
+
+## Unreleased
+
+- Use explicit native selection replacement for complete query projections with
+  Selecto 0.6.0; keep filters, required predicates and trusted tenant scope.
 CHANGES
 =======
 
